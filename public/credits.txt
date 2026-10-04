@@ -1,0 +1,24 @@
+Nordschleife Kart — credits and licences
+
+Code
+  Gameplay code ported from Open Street Kart
+  https://github.com/Picorims/open-street-kart
+  Copyright (c) 2025-2026 Charly Schmidt aka Picorims and Open Street Kart contributors
+  Mozilla Public License 2.0 (this project is released under the same licence)
+
+Art
+  Asphalt, grass, forest floor, field, rock, scrub and render materials, item icons:
+  Open Street Kart, (c) Picorims, CC BY-SA 4.0
+  https://creativecommons.org/licenses/by-sa/4.0/
+  Modified: resized; asphalt cropped to remove lane markings and mirrored to tile.
+
+Map data
+  (c) OpenStreetMap contributors, ODbL 1.0 — https://www.openstreetmap.org/copyright
+  Nordschleife: OSM relation 38566, fetched with the Overpass API.
+
+Elevation
+  AWS Terrain Tiles (Terrarium), Mapzen / Linux Foundation; sources include SRTM and EU-DEM.
+  https://registry.opendata.aws/terrain-tiles/
+
+Sound
+  Synthesised at runtime with the Web Audio API; no audio files.
