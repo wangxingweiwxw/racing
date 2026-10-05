@@ -27,7 +27,7 @@ export const TRACK_SPEED: Record<SpeedMode, number> = {
   [SpeedMode.CHALLENGING]: 35,
   [SpeedMode.CRAZY]: 40,
 };
-/** OSK OutOfBoundsSpeedDict (m/s), raised for the faster Nordschleife verges */
+/** OSK OutOfBoundsSpeedDict (m/s), raised for the faster verges of real circuits */
 export const OUT_OF_BOUNDS_SPEED: Record<SpeedMode, number> = {
   [SpeedMode.CHILL]: 6 * 1.8,
   [SpeedMode.CASUAL]: 8 * 1.8,
@@ -36,29 +36,14 @@ export const OUT_OF_BOUNDS_SPEED: Record<SpeedMode, number> = {
 };
 
 export interface Course {
+  /** unique across tracks: best times and ghosts are stored per course id */
   id: string;
   name: string;
   sub: string;
   startS: number;
   distance: number;
-}
-
-export function makeCourses(track: Track): Course[] {
-  const s = (n: string) => track.sectors.find((x) => x.name === n)!.s;
-  const L = track.length;
-  const parts: [string, string, string, string][] = [
-    ["s1", "第一段 · Hatzenbach", "T13", "Adenauer Forst"],
-    ["s2", "第二段 · Adenauer Forst", "Adenauer Forst", "Bergwerk"],
-    ["s3", "第三段 · Bergwerk", "Bergwerk", "Hohe Acht"],
-    ["s4", "第四段 · Hohe Acht", "Hohe Acht", "T13"],
-  ];
-  const courses: Course[] = [{ id: "full", name: "北环全圈", sub: "T13 → T13 · Touristenfahrten 圈", startS: 0, distance: L }];
-  for (const [id, name, a, b] of parts) {
-    const sa = a === "T13" ? 0 : s(a);
-    const sb = b === "T13" ? L : s(b);
-    courses.push({ id, name, sub: `${a} → ${b}`, startS: sa, distance: sb - sa });
-  }
-  return courses;
+  /** closed-lap races (distance = laps * length); 0 = point to point sector */
+  laps: number;
 }
 
 export interface Racer {
@@ -78,6 +63,8 @@ export interface Racer {
   susp: { pitch: number; roll: number; bounce: number; vb: number };
   splits: number[];
   lastSector: number;
+  /** race time at each completed lap */
+  lapTimes: number[];
 }
 
 const BOT_NAMES = ["Anna", "Jonas", "Lena", "Felix", "Mia", "Lukas", "Emma"];
@@ -195,6 +182,7 @@ export class Race {
         susp: { pitch: 0, roll: 0, bounce: 0, vb: 0 },
         splits: [],
         lastSector: -1,
+        lapTimes: [],
       };
       if (isPlayer) this.player = r;
       this.racers.push(r);
@@ -358,6 +346,19 @@ export class Race {
     if (secIdx !== r.lastSector) {
       if (r.lastSector >= 0 && k.progress > 0) r.splits.push(this.time);
       r.lastSector = secIdx;
+    }
+    // laps
+    if (course.laps > 1 && r.lapTimes.length < course.laps) {
+      const done = Math.floor(k.progress / this.track.length + 1e-6);
+      if (done > r.lapTimes.length && k.progress > 0) {
+        r.lapTimes.push(this.time);
+        const left = course.laps - r.lapTimes.length;
+        if (r.isPlayer && left > 0) {
+          const prev = r.lapTimes.length > 1 ? r.lapTimes[r.lapTimes.length - 2] : 0;
+          this.events.push({ text: `${left === 1 ? "最后一圈！" : `第 ${r.lapTimes.length + 1} 圈`} · 上圈 ${(this.time - prev).toFixed(2)} s`, t: 0 });
+          this.audio.beep(880, 0.15, 0.2);
+        }
+      }
     }
     // finish (OSK: last loop checkpoint reached)
     if (r.finishTime < 0 && k.progress >= course.distance) {

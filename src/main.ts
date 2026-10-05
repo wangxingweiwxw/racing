@@ -1,19 +1,21 @@
 // Nordschleife Kart: entry point (port of Open Street Kart scenes/main.gd).
+// The track is chosen before loading (src/tracks.ts); switching tracks reloads the page.
 import * as THREE from "three";
 import { Heightmap, Track, TrackJSON } from "./track";
 import { buildTerrain, makeTerrainMaterial } from "./world/terrain";
 import { buildRoad } from "./world/road";
 import { Vegetation } from "./world/vegetation";
-import { buildBuildings, buildPublicRoads, Crowds, WorldJSON } from "./world/scenery";
+import { buildBuildings, buildPublicRoads, buildWater, Crowds, WorldJSON } from "./world/scenery";
 import { SkyLights } from "./world/sky";
 import { BASE, setMaxAnisotropy } from "./world/assets";
 import { Controls } from "./race/brain";
-import { Race, makeCourses } from "./race/race";
+import { Race } from "./race/race";
 import { CameraRig, CAM_MODES, CamMode } from "./race/camera";
 import { GameAudio } from "./audio";
 import { UI, SetupChoice } from "./ui/ui";
 import { buildTouch } from "./ui/touch";
 import { loadSettings, saveSettings } from "./settings";
+import { currentTrack } from "./tracks";
 
 const CAM_LABEL: Record<CamMode, string> = { chase: "追尾视角", far: "远景视角", hood: "车手视角" };
 
@@ -45,6 +47,9 @@ async function fetchBin(url: string, onProgress?: (f: number) => void): Promise<
 
 async function boot() {
   const settings = loadSettings();
+  const info = currentTrack();
+  const DATA = `${BASE}data/${info.id}/`;
+  document.title = `${info.brand[0]} ${info.brand[1]}`;
   const canvas = document.getElementById("view") as HTMLCanvasElement;
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: settings.quality > 0, powerPreference: "high-performance" });
   const applyPixelRatio = () => renderer.setPixelRatio(Math.min(devicePixelRatio, settings.quality === 2 ? 2 : settings.quality === 1 ? 1.5 : 1));
@@ -83,26 +88,27 @@ async function boot() {
   });
 
   // ---------------------------------------------------------------- data (OSK MapDataLoader)
-  const trackJson = (await (await fetch(`${BASE}data/track.json`)).json()) as TrackJSON;
+  const ui = new UI(info, settings);
+  const trackJson = (await (await fetch(`${DATA}track.json`)).json()) as TrackJSON;
   const track = new Track(trackJson);
-  const courses = makeCourses(track);
-  const ui = new UI(track, courses, settings);
+  const courses = info.courses(track);
+  ui.setTrack(track, courses);
   ui.setLoading(0.05, "下载地形高程…");
   const [terrainRaw, world, treesRaw] = await Promise.all([
-    fetchBin(`${BASE}data/terrain.bin`, (f) => ui.setLoading(0.05 + f * 0.15, "下载地形高程…")),
-    fetch(`${BASE}data/world.json`).then((r) => r.json() as Promise<WorldJSON>),
-    fetchBin(`${BASE}data/trees.bin`, (f) => ui.setLoading(0.2 + f * 0.15, "下载森林分布…")),
+    fetchBin(`${DATA}terrain.bin`, (f) => ui.setLoading(0.05 + f * 0.15, "下载地形高程…")),
+    fetch(`${DATA}world.json`).then((r) => r.json() as Promise<WorldJSON>),
+    fetchBin(`${DATA}trees.bin`, (f) => ui.setLoading(0.2 + f * 0.15, "下载树木分布…")),
   ]);
   const hm = new Heightmap(trackJson.terrain, terrainRaw);
 
   ui.setLoading(0.4, "生成地形…");
   await tick();
-  const terrainMat = makeTerrainMaterial({ lc: trackJson.landcover });
+  const terrainMat = makeTerrainMaterial({ lc: trackJson.landcover, dir: DATA });
   scene.add(buildTerrain(hm, terrainMat));
 
-  ui.setLoading(0.5, "铺设 20.75 km 赛道与护栏…");
+  ui.setLoading(0.5, `铺设 ${(track.length / 1000).toFixed(2)} km 赛道与护栏…`);
   await tick();
-  const road = buildRoad(track, hm, terrainMat);
+  const road = buildRoad(track, hm, terrainMat, info);
   track.railL = road.railL;
   track.railR = road.railR;
   scene.add(road.group);
@@ -118,10 +124,11 @@ async function boot() {
   ui.setLoading(0.74, `建造 ${world.buildings.length} 栋建筑与周边道路…`);
   await tick();
   if (!nogfx) {
-    scene.add(buildBuildings(world));
+    scene.add(buildBuildings(world, track));
     scene.add(buildPublicRoads(world, track, hm));
   }
-  const crowds = new Crowds(track, hm, nogfx ? [] : road.spectatorZones);
+  if (world.water) scene.add(buildWater(world.water));
+  const crowds = new Crowds(track, hm, nogfx ? [] : road.spectatorZones, info.campers);
   scene.add(crowds.group);
 
   ui.setLoading(0.86, "天空与光照…");
@@ -133,7 +140,7 @@ async function boot() {
   await tick();
   const rig = new CameraRig(camera, track);
   rig.mode = settings.camera;
-  rig.setFlyoverStart(track.sectors.find((s) => s.name === "Hatzenbach")?.s ?? 0);
+  rig.setFlyoverStart(track.sectors.find((s) => s.name === info.flyoverSector)?.s ?? 0);
   rig.flyover(0.016);
   sky.update(camera.position, camera, 0);
   veg.update(camera, 0);

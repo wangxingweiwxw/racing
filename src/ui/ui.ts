@@ -6,6 +6,7 @@ import { Course, PLAYER_COLORS, Race, Racer, SpeedMode, TRACK_SPEED } from "../r
 import { GameMode, SlotItem } from "../race/items";
 import { BASE } from "../world/assets";
 import { Settings } from "../settings";
+import { TrackInfo, TRACKS, switchTrack } from "../tracks";
 
 type Attrs = Record<string, string | number | boolean | ((e: Event) => void)>;
 export function h(tag: string, attrs: Attrs = {}, ...kids: (Node | string | null | undefined | false)[]): HTMLElement {
@@ -28,10 +29,10 @@ export function fmtTime(t: number, digits = 3): string {
   return `${m}:${s.toFixed(digits).padStart(digits + 3, "0")}`;
 }
 
-const MODE_INFO: { mode: GameMode; t: string; d: string }[] = [
+const modeInfo = (info: TrackInfo): { mode: GameMode; t: string; d: string }[] => [
   { mode: GameMode.VERSUS, t: "对手赛", d: "与 AI 车手同场竞速，道具槽按落后距离补给（OSK Versus）" },
   { mode: GameMode.AGAINST_CLOCK, t: "计时赛", d: "三次氮气加速，挑战个人最佳并与幽灵车对抗（OSK Against Clock）" },
-  { mode: GameMode.FREE, t: "自由驾驶", d: "Touristenfahrten：没有对手和道具，熟悉 73 个弯道" },
+  { mode: GameMode.FREE, t: "自由驾驶", d: info.freeModeDesc },
 ];
 const SPEED_INFO: { speed: SpeedMode; t: string }[] = [
   { speed: SpeedMode.CHILL, t: "Chill" },
@@ -59,7 +60,9 @@ export class UI {
   private profBase: HTMLCanvasElement | null = null;
   private speedCanvas!: HTMLCanvasElement;
   private mapXf = { s: 1, ox: 0, oz: 0 };
-  choice: SetupChoice;
+  choice!: SetupChoice;
+  private track!: Track;
+  private courses: Course[] = [];
   private lastSector = "";
   private sectorFlash = 0;
   private deltaText = "";
@@ -74,11 +77,17 @@ export class UI {
   onSettings: (s: Settings) => void = () => {};
   touchHost!: HTMLElement;
 
-  constructor(private track: Track, private courses: Course[], private settings: Settings) {
+  constructor(private info: TrackInfo, private settings: Settings) {
+    this.buildLoading();
+  }
+
+  setTrack(track: Track, courses: Course[]) {
+    this.track = track;
+    this.courses = courses;
     this.choice = {
       mode: GameMode.VERSUS,
       speed: SpeedMode.CASUAL,
-      course: courses[1],
+      course: courses.find((c) => c.id === this.info.defaultCourse) ?? courses[0],
       color: PLAYER_COLORS[0],
       bots: 7,
     };
@@ -87,14 +96,15 @@ export class UI {
       if (saved) {
         this.choice.mode = saved.mode ?? this.choice.mode;
         this.choice.speed = saved.speed ?? this.choice.speed;
-        this.choice.course = courses.find((c) => c.id === saved.course) ?? this.choice.course;
         this.choice.color = saved.color ?? this.choice.color;
         this.choice.bots = saved.bots ?? this.choice.bots;
       }
+      // the course is remembered per track
+      const course = localStorage.getItem(`nk-course-${this.info.id}`) ?? saved?.course;
+      this.choice.course = courses.find((c) => c.id === course) ?? this.choice.course;
     } catch {
       /* first visit */
     }
-    this.buildLoading();
   }
 
   // ------------------------------------------------------------------ loading
@@ -102,7 +112,7 @@ export class UI {
     const s = h(
       "div",
       { class: "screen", id: "loading" },
-      h("div", { class: "brand", style: "text-align:center" }, h("span", { class: "b1" }, "Nordschleife"), h("span", { class: "b2" }, "Kart")),
+      h("div", { class: "brand", style: "text-align:center" }, h("span", { class: "b1" }, this.info.brand[0]), h("span", { class: "b2" }, this.info.brand[1])),
       h("div", { class: "load-bar" }, h("i", { id: "load-fill" })),
       h("div", { class: "load-text", id: "load-text" }, "准备中…"),
     );
@@ -118,24 +128,39 @@ export class UI {
   // ------------------------------------------------------------------ build all screens after load
   buildScreens(stats: { buildings: number; trees: number }) {
     const L = (this.track.length / 1000).toFixed(2);
-    const elevDiff = Math.round(this.track.data.elevation.max - this.track.data.elevation.min);
+    const info = this.info;
     const title = h(
       "div",
       { class: "screen scrim-left hidden", id: "title" },
       h(
         "div",
         { class: "title-block" },
-        h("div", { class: "kicker" }, "Open Street Kart · 纽博格林"),
-        h("div", { class: "brand" }, h("span", { class: "b1" }, "Nordschleife"), h("span", { class: "b2" }, "Kart")),
-        h("p", { class: "tagline" }, "在真实还原的“绿色地狱”上驾驶卡丁车。赛道、地形、森林与村庄全部由 OpenStreetMap 和高程数据生成。"),
+        h("div", { class: "kicker" }, info.kicker),
+        h("div", { class: "brand" }, h("span", { class: "b1" }, info.brand[0]), h("span", { class: "b2" }, info.brand[1])),
+        h("p", { class: "tagline" }, info.tagline),
         h(
           "div",
           { class: "chips" },
           h("span", { class: "chip" }, h("b", {}, L), "km"),
-          h("span", { class: "chip" }, h("b", {}, String(this.track.sectors.length)), "个命名路段"),
-          h("span", { class: "chip" }, h("b", {}, String(elevDiff)), "m 落差"),
+          ...info.chips(this.track).map(([v, label]) => h("span", { class: "chip" }, h("b", {}, v), label)),
           h("span", { class: "chip" }, h("b", {}, stats.buildings.toLocaleString()), "栋建筑"),
-          h("span", { class: "chip" }, h("b", {}, `${Math.round(stats.trees / 1000)}k`), "棵树"),
+          h("span", { class: "chip" }, h("b", {}, stats.trees >= 10000 ? `${Math.round(stats.trees / 1000)}k` : stats.trees.toLocaleString()), "棵树"),
+        ),
+        h(
+          "div",
+          { class: "track-pick" },
+          ...TRACKS.map((t) =>
+            h(
+              "button",
+              {
+                class: `opt ${t.id === info.id ? "on" : ""}`,
+                "aria-pressed": t.id === info.id ? "true" : "false",
+                onclick: () => t.id !== info.id && switchTrack(t.id),
+              },
+              h("div", { class: "t" }, t.label),
+              h("div", { class: "d" }, t.id === info.id ? `${t.labelSub} · 当前赛道` : t.labelSub),
+            ),
+          ),
         ),
       ),
       h(
@@ -213,10 +238,10 @@ export class UI {
         "div",
         { class: "panel" },
         h("h2", {}, "赛事设置"),
-        h("p", { class: "sub" }, "选择模式、速度档位与赛段。北环全圈 20.75 km，分段赛约 4–6 km。"),
+        h("p", { class: "sub" }, this.info.setupSub),
         h("div", { class: "group" }, h("label", {}, "模式"), modes),
         h("div", { class: "group" }, h("label", {}, "速度档位 · 来自 OSK"), speeds),
-        h("div", { class: "group" }, h("label", {}, "赛段"), courses),
+        h("div", { class: "group" }, h("label", {}, this.courses.some((co) => co.laps > 1) ? "圈数" : "赛段"), courses),
         botsGroup,
         h("div", { class: "group" }, h("label", {}, "车身颜色"), colors),
         h(
@@ -235,7 +260,7 @@ export class UI {
     const e = this.setupEls!;
     const c = this.choice;
     e.modes.replaceChildren(
-      ...MODE_INFO.map((m) =>
+      ...modeInfo(this.info).map((m) =>
         h("button", { class: `opt ${c.mode === m.mode ? "on" : ""}`, onclick: () => ((c.mode = m.mode), this.refreshSetup()) }, h("div", { class: "t" }, m.t), h("div", { class: "d" }, m.d)),
       ),
     );
@@ -285,6 +310,7 @@ export class UI {
   private start() {
     try {
       localStorage.setItem("nk-choice", JSON.stringify({ mode: this.choice.mode, speed: this.choice.speed, course: this.choice.course.id, color: this.choice.color, bots: this.choice.bots }));
+      localStorage.setItem(`nk-course-${this.info.id}`, this.choice.course.id);
     } catch {
       /* ignore */
     }
@@ -322,13 +348,13 @@ export class UI {
           "div",
           { class: "prose" },
           h("h3", {}, "玩法"),
-          "沿北环行驶，越过终点线即完成赛段。驶出沥青后会被限速（OSK 的越界速度），撞护栏会损失速度。",
+          "沿赛道行驶，越过终点线即完成赛段或比赛。驶出沥青后会被限速（OSK 的越界速度），撞护栏会损失速度。",
           h("br"),
           "漂移：转向时按住漂移键，车尾滑出，火花由蓝变橙后松开可获得短暂加速。",
           h("br"),
           "道具（对手赛）：落后越多补给越快；氮气提升 50% 极速 2.5 秒；空投炸弹抛向前方，16 m 范围内的车会被掀起。",
           h("br"),
-          "检查点每 250 m 一个，按 R 回到最近的检查点。Flugplatz、Sprunghügel、Pflanzgarten 等坡顶可以飞跃。",
+          this.info.helpTips,
         ),
         h("div", { class: "row-end" }, h("button", { class: "btn primary", onclick: () => this.back() }, "知道了")),
       ),
@@ -356,9 +382,9 @@ export class UI {
 <h3>美术素材</h3>
 沥青、草地、森林地面、田地、岩石、灌木、墙面材质与道具图标来自 Open Street Kart，© Picorims，<a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noopener">CC BY-SA 4.0</a>（已缩放；沥青裁去城市标线后镜像拼接）。
 <h3>地图数据</h3>
-赛道、建筑、道路、森林与地表分类：© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a>，ODbL。北环取自 OSM relation 38566（Nürburgring Nordschleife），经 Overpass API 获取。
+${this.info.creditsMap}
 <h3>高程</h3>
-<a href="https://registry.opendata.aws/terrain-tiles/" target="_blank" rel="noopener">AWS Terrain Tiles</a>（Terrarium，Mapzen；源数据包括 SRTM、EU-DEM 等）。Flugplatz、Sprunghügel 等坡顶的跳跃起伏为手工补充，30 m 精度的 DEM 无法表现。
+${this.info.creditsElevation}
 <h3>技术</h3>
 Three.js、Vite、TypeScript。声音由 Web Audio 实时合成，未使用音频文件。`,
           },
@@ -608,7 +634,8 @@ Three.js、Vite、TypeScript。声音由 Web Audio 实时合成，未使用音�
     }
     const W = c.width;
     const H = c.height;
-    const yOf = (y: number) => H - 12 - ((y - lo) / Math.max(1, hi - lo)) * (H - 40);
+    // at least 30 m of range: flat circuits stay flat instead of magnifying DEM noise
+    const yOf = (y: number) => H - 12 - ((y - lo) / Math.max(30, hi - lo)) * (H - 40);
     ctx.beginPath();
     ctx.moveTo(0, H);
     ys.forEach((y, k) => ctx.lineTo((k / n) * W, yOf(y)));
@@ -678,7 +705,8 @@ Three.js、Vite、TypeScript。声音由 Web Audio 实时合成，未使用音�
     this.sectorFlash = Math.max(0, this.sectorFlash - dt);
     (this.els.sector.parentElement as HTMLElement).style.boxShadow = this.sectorFlash > 0 ? `0 0 0 ${2 * this.sectorFlash}px rgba(255,212,0,${this.sectorFlash})` : "";
     const remain = Math.max(0, co.distance - k.progress);
-    this.els.remain.textContent = `剩余 ${(remain / 1000).toFixed(2)} km · ${camLabel}`;
+    const lap = co.laps > 1 ? `第 ${Math.min(co.laps, p.lapTimes.length + 1)}/${co.laps} 圈 · ` : "";
+    this.els.remain.textContent = `${lap}剩余 ${(remain / 1000).toFixed(2)} km · ${camLabel}`;
     // speed
     const kmh = Math.round(k.speed * 3.6);
     this.els.speed.textContent = String(kmh);
@@ -879,6 +907,22 @@ Three.js、Vite、TypeScript。声音由 Web Audio 实时合成，未使用音�
       ),
       h("p", { class: "sub" }, `平均速度 ${((race.opts.course.distance / p.finishTime) * 3.6).toFixed(1)} km/h`),
       versus ? h("table", {}, h("tr", {}, h("th", {}, "名次"), h("th", {}, "车手"), h("th", {}, "时间 / 剩余")), ...rows) : null,
+      race.opts.course.laps > 1 && p.lapTimes.length
+        ? h(
+            "div",
+            { class: "group" },
+            h("label", {}, "单圈用时"),
+            h(
+              "div",
+              { class: "splits" },
+              ...p.lapTimes.map((t, i) => {
+                const lt = t - (i ? p.lapTimes[i - 1] : 0);
+                const fastest = Math.min(...p.lapTimes.map((x, j) => x - (j ? p.lapTimes[j - 1] : 0)));
+                return h("div", {}, `第 ${i + 1} 圈`, h("span", { style: lt === fastest ? "color:var(--accent)" : "" }, fmtTime(lt)));
+              }),
+            ),
+          )
+        : null,
       h("div", { class: "group" }, h("label", {}, "路段用时（秒）"), splitsEl),
       h(
         "div",

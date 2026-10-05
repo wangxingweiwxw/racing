@@ -21,6 +21,8 @@ export interface TrackJSON {
   bank: number[];
   half: number[];
   verge: number;
+  /** verge cross-fall beyond the asphalt edge: [slope, extra slope after 1.2 m] (default Nordschleife ditches) */
+  vergeFall?: [number, number];
   line: number[];
   lineCurv: number[];
   sectors: Sector[];
@@ -61,6 +63,7 @@ export class Track {
   readonly tz: Float32Array;
   readonly curv: Float32Array;
   readonly verge: number;
+  readonly vergeFall: [number, number];
   readonly sectors: Sector[];
   readonly crests: Sector[];
   readonly data: TrackJSON;
@@ -79,6 +82,7 @@ export class Track {
     this.line = Float32Array.from(d.line);
     this.lineCurv = Float32Array.from(d.lineCurv);
     this.verge = d.verge;
+    this.vergeFall = d.vergeFall ?? [0.06, 0.05];
     this.sectors = d.sectors;
     this.crests = d.crests;
     const N = this.N;
@@ -227,7 +231,7 @@ export class Track {
     const c = Math.max(-h, Math.min(h, lat));
     let y = q.yc + c * tb;
     const over = Math.abs(lat) - h;
-    if (over > 0) y -= over * 0.06 + Math.max(0, over - 1.2) * 0.05; // verge falls away slightly
+    if (over > 0) y -= over * this.vergeFall[0] + Math.max(0, over - 1.2) * this.vergeFall[1]; // verge falls away slightly
     return y;
   }
 

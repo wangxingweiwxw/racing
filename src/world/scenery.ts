@@ -1,14 +1,78 @@
 // OSM driven scenery: buildings (OSK OSMDataGenerator._build_building), public roads,
-// bridges over the circuit, and crowds at the classic spectator spots.
+// bridges over the circuit, lakes and canals, and crowds at the classic spectator spots.
 import * as THREE from "three";
 import { Heightmap, Track, TrackQuery } from "../track";
 import { BASE, rng, tex } from "./assets";
 
 export interface WorldJSON {
-  buildings: { h: number; b: number; r: "flat" | "gable"; p: [number, number][] }[];
+  /** k = "g": grandstand, drawn as tiered seating facing the track */
+  buildings: { h: number; b: number; r: "flat" | "gable"; p: [number, number][]; k?: "g" }[];
   roads: { w: number; t: number; p: [number, number][] }[];
   places: { name: string; x: number; z: number; kind: string }[];
   peaks: { name: string; x: number; z: number; ele?: string }[];
+  /** flat water surfaces (tracks built with water_mesh) */
+  water?: WaterJSON;
+}
+
+export interface WaterJSON {
+  polys: { y: number; p: [number, number][]; holes: [number, number][][] }[];
+  lines: { y: number; w: number; p: [number, number][] }[];
+}
+
+/** Lakes (OSM polygons) and canals (ribbons along waterways) as flat water at their bank level. */
+export function buildWater(water: WaterJSON): THREE.Mesh {
+  const pos: number[] = [];
+  const idx: number[] = [];
+  for (const poly of water.polys) {
+    const shape = new THREE.Shape(poly.p.map(([x, z]) => new THREE.Vector2(x, z)));
+    for (const h of poly.holes) shape.holes.push(new THREE.Path(h.map(([x, z]) => new THREE.Vector2(x, z))));
+    const g = new THREE.ShapeGeometry(shape);
+    const p = g.getAttribute("position");
+    const base = pos.length / 3;
+    for (let i = 0; i < p.count; i++) pos.push(p.getX(i), poly.y, p.getY(i));
+    const gi = g.index!;
+    // shape space (x, z) mirrors y -> z: flip the winding so the faces point up
+    for (let i = 0; i < gi.count; i += 3) idx.push(base + gi.getX(i), base + gi.getX(i + 2), base + gi.getX(i + 1));
+    g.dispose();
+  }
+  for (const line of water.lines) {
+    const n = line.p.length;
+    const base = pos.length / 3;
+    for (let i = 0; i < n; i++) {
+      const a = line.p[Math.max(0, i - 1)];
+      const b = line.p[Math.min(n - 1, i + 1)];
+      let dx = b[0] - a[0];
+      let dz = b[1] - a[1];
+      const l = Math.hypot(dx, dz) || 1;
+      dx /= l;
+      dz /= l;
+      const hw = line.w / 2;
+      pos.push(line.p[i][0] - dz * hw, line.y, line.p[i][1] + dx * hw, line.p[i][0] + dz * hw, line.y, line.p[i][1] - dx * hw);
+    }
+    for (let i = 0; i < n - 1; i++) {
+      const a = base + i * 2;
+      idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute("normal", new THREE.Float32BufferAttribute(new Float32Array(pos.length).map((_, k) => (k % 3 === 1 ? 1 : 0)), 3));
+  g.setIndex(idx);
+  const mat = new THREE.MeshStandardMaterial({ color: 0x2c4a4f, roughness: 0.12, metalness: 0, side: THREE.DoubleSide });
+  mat.onBeforeCompile = (shader) => {
+    // no reflections in the scene: fake the sky in the water at grazing angles
+    shader.fragmentShader = shader.fragmentShader.replace(
+      "#include <opaque_fragment>",
+      `float fres = pow(1.0 - clamp(dot(normalize(vViewPosition), normal), 0.0, 1.0), 4.0);
+outgoingLight = mix(outgoingLight, vec3(0.58, 0.68, 0.78), fres * 0.7);
+#include <opaque_fragment>`,
+    );
+  };
+  mat.customProgramCacheKey = () => "water-v1";
+  const m = new THREE.Mesh(g, mat);
+  m.name = "water";
+  m.receiveShadow = true;
+  return m;
 }
 
 const WALL_COLORS = [0xefe9dc, 0xe8e2d2, 0xf3efe6, 0xd9d2c3, 0xe6dccb, 0xc9c3b6, 0xbfb7a8, 0xece4d0];
@@ -40,10 +104,113 @@ if (vMapUv.y >= 0.0) {
   return mat;
 }
 
-export function buildBuildings(world: WorldJSON): THREE.Group {
+type Cell = { pos: number[]; col: number[]; uv: number[]; idx: number[] };
+const SEAT_COLORS = [0x2a5c9e, 0x2f6bb3, 0xb53a35, 0x4f5b66, 0x2f7d8c];
+
+/** Grandstand: rows of seats stepping up away from the track, side walls and a roof canopy. */
+function addStand(cell: Cell, pts: [number, number][], y0: number, h: number, track: Track, r: () => number) {
+  let cx = 0;
+  let cz = 0;
+  for (const [x, z] of pts) {
+    cx += x;
+    cz += z;
+  }
+  cx /= pts.length;
+  cz /= pts.length;
+  // long axis (u) from the second moments of the footprint, v points towards the track
+  let sxx = 0;
+  let szz = 0;
+  let sxz = 0;
+  for (const [x, z] of pts) {
+    sxx += (x - cx) ** 2;
+    szz += (z - cz) ** 2;
+    sxz += (x - cx) * (z - cz);
+  }
+  const ang = 0.5 * Math.atan2(2 * sxz, sxx - szz);
+  const ux = Math.cos(ang);
+  const uz = Math.sin(ang);
+  let vx = -uz;
+  let vz = ux;
+  const q = track.query(cx, cz);
+  const tx = track.x[q.i] - cx;
+  const tz = track.z[q.i] - cz;
+  if (tx * vx + tz * vz < 0) {
+    vx = -vx;
+    vz = -vz;
+  }
+  let umin = Infinity;
+  let umax = -Infinity;
+  let vmin = Infinity;
+  let vmax = -Infinity;
+  for (const [x, z] of pts) {
+    const u = (x - cx) * ux + (z - cz) * uz;
+    const v = (x - cx) * vx + (z - cz) * vz;
+    umin = Math.min(umin, u);
+    umax = Math.max(umax, u);
+    vmin = Math.min(vmin, v);
+    vmax = Math.max(vmax, v);
+  }
+  const P = (u: number, v: number, y: number): number[] => [cx + ux * u + vx * v, y, cz + uz * u + vz * v];
+  const c = new THREE.Color();
+  const quad = (a: number[], b: number[], cc: number[], d: number[], col: number, out: number[]) => {
+    // wind (a, b, c, d) so the face normal points along `out`
+    const e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+    const e2 = [cc[0] - a[0], cc[1] - a[1], cc[2] - a[2]];
+    const n = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]];
+    const flip = n[0] * out[0] + n[1] * out[1] + n[2] * out[2] < 0;
+    const base = cell.pos.length / 3;
+    for (const p of flip ? [d, cc, b, a] : [a, b, cc, d]) {
+      cell.pos.push(p[0], p[1], p[2]);
+      c.setHex(col);
+      cell.col.push(c.r, c.g, c.b);
+      cell.uv.push(0, -1); // no procedural windows
+    }
+    cell.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+  };
+  const front = [vx, 0, vz];
+  const back = [-vx, 0, -vz];
+  const up = [0, 1, 0];
+  const concrete = 0xb9b6ae;
+  const seat = SEAT_COLORS[Math.floor(r() * SEAT_COLORS.length)];
+  const depth = vmax - vmin;
+  const roofY = y0 + h;
+  const topY = y0 + Math.max(3, h - Math.min(6, h * 0.25));
+  const frontY = y0 + Math.min(2.2, h * 0.2);
+  const rows = Math.max(4, Math.min(40, Math.round((depth * 0.85) / 0.85)));
+  const vFront = vmax;
+  const vBack = vmin + depth * 0.12;
+  // front wall up to the first row
+  quad(P(umin, vFront, y0), P(umax, vFront, y0), P(umax, vFront, frontY), P(umin, vFront, frontY), concrete, front);
+  for (let k = 0; k < rows; k++) {
+    const va = vFront - ((vFront - vBack) * k) / rows;
+    const vb = vFront - ((vFront - vBack) * (k + 1)) / rows;
+    const ya = frontY + ((topY - frontY) * k) / rows;
+    const yb = frontY + ((topY - frontY) * (k + 1)) / rows;
+    // tread (seat row) then riser
+    quad(P(umin, va, ya), P(umax, va, ya), P(umax, vb, ya), P(umin, vb, ya), k % 9 === 8 ? concrete : seat, up);
+    quad(P(umin, vb, ya), P(umax, vb, ya), P(umax, vb, yb), P(umin, vb, yb), 0x8d8a83, front);
+  }
+  // upper concourse, back wall up to the roof, side walls
+  quad(P(umin, vBack, topY), P(umax, vBack, topY), P(umax, vmin, topY), P(umin, vmin, topY), concrete, up);
+  quad(P(umin, vmin, y0), P(umax, vmin, y0), P(umax, vmin, roofY), P(umin, vmin, roofY), concrete, back);
+  for (const [u, out] of [
+    [umin, [-ux, 0, -uz]],
+    [umax, [ux, 0, uz]],
+  ] as const) {
+    quad(P(u, vFront, y0), P(u, vmin, y0), P(u, vmin, topY), P(u, vFront, frontY), concrete, [...out]);
+    // trapezoid above the seats to the roof, open towards the track
+    quad(P(u, vmin, topY), P(u, vmin, roofY), P(u, vmin + depth * 0.55, roofY), P(u, vmin + depth * 0.55, topY), concrete, [...out]);
+  }
+  // cantilevered roof over most of the seating
+  const roofFront = vmin + depth * 0.8;
+  quad(P(umin - 1, vmin, roofY), P(umax + 1, vmin, roofY), P(umax + 1, roofFront, roofY + 1.2), P(umin - 1, roofFront, roofY + 1.2), 0xe8e8e4, up);
+  quad(P(umin - 1, vmin, roofY - 0.5), P(umax + 1, vmin, roofY - 0.5), P(umax + 1, roofFront, roofY + 0.7), P(umin - 1, roofFront, roofY + 0.7), 0x6b6e72, [0, -1, 0]);
+}
+
+export function buildBuildings(world: WorldJSON, track: Track): THREE.Group {
   const group = new THREE.Group();
   group.name = "buildings";
-  const cells = new Map<string, { pos: number[]; col: number[]; uv: number[]; idx: number[] }>();
+  const cells = new Map<string, Cell>();
   const r = rng(42);
   const c = new THREE.Color();
   for (const b of world.buildings) {
@@ -59,6 +226,10 @@ export function buildBuildings(world: WorldJSON): THREE.Group {
     const key = `${Math.floor(cx / 1000)},${Math.floor(cz / 1000)}`;
     let cell = cells.get(key);
     if (!cell) cells.set(key, (cell = { pos: [], col: [], uv: [], idx: [] }));
+    if (b.k === "g") {
+      addStand(cell, pts, b.b, b.h, track, r);
+      continue;
+    }
     const wall = new THREE.Color(WALL_COLORS[Math.floor(r() * WALL_COLORS.length)]);
     const roofC = new THREE.Color(ROOF_COLORS[Math.floor(r() * ROOF_COLORS.length)]);
     // ensure CCW winding (seen from above with z south)
@@ -333,7 +504,7 @@ export class Crowds {
   readonly group = new THREE.Group();
   private uniforms = { uTime: { value: 0 } };
 
-  constructor(track: Track, hm: Heightmap, zones: { a: number; b: number }[]) {
+  constructor(track: Track, hm: Heightmap, zones: { a: number; b: number }[], withCampers = true) {
     const r = rng(1927);
     const person = (() => {
       const body = new THREE.CylinderGeometry(0.2, 0.24, 1.0, 6);
@@ -384,7 +555,7 @@ export class Crowds {
             mats.push(new THREE.Matrix4().compose(v.clone(), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), face), new THREE.Vector3(sc, sc, sc)));
             cols.push(new THREE.Color(shirts[Math.floor(r() * shirts.length)]));
           }
-          if (r() < 0.12) {
+          if (withCampers && r() < 0.12) {
             const d = track.half[i] + track.verge + 10 + r() * 8;
             v.set(track.x[i] + track.rx(i) * d * side, 0, track.z[i] + track.rz(i) * d * side);
             v.y = hm.height(v.x, v.z);

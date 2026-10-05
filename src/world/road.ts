@@ -1,11 +1,12 @@
-// Road surface and trackside furniture for the Nordschleife.
+// Road surface and trackside furniture.
 // Open Street Kart builds roads with the Road Generator add-on and places
 // WallOfWheels / checkpoints by hand; here everything is generated from the
-// centre line so the whole 20.8 km loop is covered.
+// centre line so the whole loop is covered (track specifics: src/tracks.ts).
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { Heightmap, Track, TrackQuery } from "../track";
 import { BASE, canvasTexture, rng, tex } from "./assets";
+import type { TrackInfo } from "../tracks";
 
 const CHUNK_SAMPLES = 200;
 
@@ -84,7 +85,7 @@ diffuseColor.rgb = mix(diffuseColor.rgb, vec3(chk * 0.9 + 0.05), sl);
   return mat;
 }
 
-export function buildRoad(track: Track, hm: Heightmap, terrainMat: THREE.Material): RoadBuild {
+export function buildRoad(track: Track, hm: Heightmap, terrainMat: THREE.Material, info: TrackInfo): RoadBuild {
   const group = new THREE.Group();
   group.name = "road";
   const N = track.N;
@@ -141,7 +142,9 @@ export function buildRoad(track: Track, hm: Heightmap, terrainMat: THREE.Materia
       const c1 = Math.min(N, c0 + CHUNK_SAMPLES);
       const pos: number[] = [];
       const idx: number[] = [];
-      const offs = [0, 1.2, 2.2, 3.2, 4.4, 7.5];
+      // verge columns about every metre up to the rail, then the skirt (3.2 m verge: 0, 1.07, 2.13, 3.2, 4.4, 7.5)
+      const nv = Math.max(3, Math.ceil(track.verge / 1.1));
+      const offs = [...Array.from({ length: nv + 1 }, (_, k) => (track.verge * k) / nv), track.verge + 1.2, track.verge + 4.3];
       const cols = offs.length;
       for (let k = c0; k <= c1; k++) {
         const i = k % N;
@@ -339,13 +342,12 @@ export function buildRoad(track: Track, hm: Heightmap, terrainMat: THREE.Materia
   }
 
   // ---------------------------------------------------------------- spectator zones, catch fences, marshal posts
-  const zoneNames = ["Hatzenbach", "Flugplatz", "Adenauer Forst", "Breidscheid", "Bergwerk", "Karussell", "Wippermann", "Brünnchen", "Pflanzgarten", "Schwalbenschwanz", "Galgenkopf"];
   const spectatorZones: RoadBuild["spectatorZones"] = [];
-  for (const nm of zoneNames) {
-    const sec = track.sectors.find((s) => s.name === nm);
+  for (const z of info.spectators) {
+    const sec = track.sectors.find((s) => s.name === z.sector);
     if (!sec) continue;
-    const a = sec.s + 40;
-    spectatorZones.push({ a, b: a + (nm === "Brünnchen" || nm === "Karussell" ? 260 : 170), name: nm });
+    const a = sec.s + z.offset;
+    spectatorZones.push({ a, b: a + z.length, name: z.sector });
   }
   {
     const fenceTex = canvasTexture(128, 128, (ctx) => {
@@ -567,11 +569,10 @@ export function buildRoad(track: Track, hm: Heightmap, terrainMat: THREE.Materia
     group.add(g);
     return g;
   };
-  addGantry(0.8, "NÜRBURGRING · NORDSCHLEIFE", "START / ZIEL  ·  T13  ·  20.75 KM", true);
-  const dh = track.sectors.find((s) => s.name === "Döttinger Höhe");
-  if (dh) {
-    addGantry(dh.s + 380, "OPEN STREET KART", "OpenStreetMap · ODbL  ·  © OSM contributors", false);
-    addGantry(dh.s + 640, "DÖTTINGER HÖHE", "BRIDGE TO GANTRY · BTG", false);
+  addGantry(0.8, info.gantry.title, info.gantry.sub, true);
+  for (const b of info.bridges) {
+    const sec = track.sectors.find((s) => s.name === b.sector);
+    if (sec) addGantry(sec.s + b.offset, b.title, b.sub, false);
   }
 
   return { group, railL, railR, spectatorZones };

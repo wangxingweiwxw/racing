@@ -8,16 +8,18 @@ const CHUNK = 64; // cells per chunk side
 
 export interface TerrainMaterialOpts {
   lc: TrackJSON["landcover"];
+  /** track data directory (…/data/<track>/) */
+  dir: string;
 }
 
 export function makeTerrainMaterial(opts: TerrainMaterialOpts): THREE.MeshStandardMaterial {
   const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.96, metalness: 0 });
-  const lcTex = tex(`${BASE}data/landcover.png`, false, false);
+  const lcTex = tex(`${opts.dir}landcover.png`, false, false);
   lcTex.wrapS = lcTex.wrapT = THREE.ClampToEdgeWrapping;
   // image row 0 is z0 (north edge); keep it at v = 0
   lcTex.flipY = false;
   lcTex.minFilter = THREE.LinearMipmapLinearFilter;
-  const lcRock = tex(`${BASE}data/landcover_rock.png`, false, false);
+  const lcRock = tex(`${opts.dir}landcover_rock.png`, false, false);
   lcRock.wrapS = lcRock.wrapT = THREE.ClampToEdgeWrapping;
   lcRock.flipY = false;
   const uniforms = {

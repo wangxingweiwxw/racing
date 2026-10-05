@@ -15,6 +15,8 @@ Art
 Map data
   (c) OpenStreetMap contributors, ODbL 1.0 — https://www.openstreetmap.org/copyright
   Nordschleife: OSM relation 38566, fetched with the Overpass API.
+  Shanghai International Circuit: OSM relation 2094941 (GP layout way 156328670,
+  start node 1686043686), fetched with the Overpass API. Corner numbers follow F1 (T1-T16).
 
 Elevation
   AWS Terrain Tiles (Terrarium), Mapzen / Linux Foundation; sources include SRTM and EU-DEM.

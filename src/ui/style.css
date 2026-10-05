@@ -136,7 +136,51 @@ button {
 #title {
   flex-direction: column;
   justify-content: center;
+  justify-content: safe center;
   gap: 26px;
+  overflow-y: auto;
+  /* room for the absolutely positioned credits line */
+  padding-bottom: max(72px, env(safe-area-inset-bottom));
+}
+
+/* short landscape screens: the title block + track picker + menu must still fit */
+@media (max-height: 760px) {
+  #title {
+    gap: 16px;
+  }
+  #title .brand .b1 {
+    font-size: clamp(38px, 10vh, 96px);
+  }
+  #title .brand .b2 {
+    font-size: clamp(26px, 6.5vh, 60px);
+  }
+  #title .kicker {
+    margin-bottom: 8px;
+  }
+  .tagline {
+    font-size: 14px;
+    line-height: 1.55;
+    margin-top: 10px;
+  }
+  .chips,
+  .track-pick {
+    margin-top: 12px;
+  }
+  .track-pick .opt {
+    padding: 8px 12px;
+  }
+  #title .menu .btn {
+    padding: 10px 16px;
+  }
+}
+
+@media (max-height: 600px), (max-width: 760px) {
+  #title {
+    padding-bottom: max(28px, env(safe-area-inset-bottom));
+  }
+  #title .foot {
+    display: none;
+  }
 }
 
 .title-block {
@@ -286,6 +330,22 @@ button {
   text-transform: uppercase;
   margin-bottom: 8px;
   font-weight: 700;
+}
+
+.track-pick {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.track-pick .opt {
+  background: rgba(10, 14, 12, 0.55);
+  cursor: pointer;
+}
+
+.track-pick .opt.on {
+  cursor: default;
 }
 
 .opts {

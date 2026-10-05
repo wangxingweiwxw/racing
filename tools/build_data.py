@@ -1,54 +1,57 @@
 #!/usr/bin/env python3
-"""Build Nürburgring Nordschleife game data from OpenStreetMap + elevation.
+"""Build track game data from OpenStreetMap + elevation.
 
 Port of the Open Street Kart track import workflow (docs/creating_a_track.md):
 OSM data (Overpass) + an elevation raster are turned into local metric
 coordinates, a road surface, a terrain heightmap and data driven decoration.
 
-Inputs  (data/raw):
-  nordschleife_rel.json  Overpass: relation 38566 + its ways (ordered, with geometry)
-  raceway.json           Overpass: all highway=raceway ways around the circuit
+Inputs  (data/raw/<track>, see tools/tracks.py and tools/fetch_data.py):
+  *_rel.json             Overpass: circuit relation + its ways (with geometry)
   env.json / env_rels.json  Overpass: buildings, landuse, natural, roads, water
   terrarium/14_x_y.png   AWS Terrain Tiles (Terrarium encoding), zoom 14
 
-Outputs (public/data):
+Outputs (public/data/<track>):
   track.json      centre line, elevation, banking, width, racing line, sectors
   terrain.bin     Uint16 heightmap (cm above hMin), row-major, z rows then x
   landcover.png   RGB splat weights (R forest, G field, B urban/asphalt)
   landcover_rock.png  L weight: gravel / rock / water
-  world.json      buildings, secondary roads, OSM single trees, places
+  world.json      buildings, secondary roads, OSM single trees, places (+ water surfaces)
   trees.bin       Int16 [x*4, z*4, scale*1000, kind] tree instances
 
-Run: python3 tools/build_data.py
+Run: python3 tools/build_data.py <track>     (nordschleife | shanghai)
 """
 import json
 import math
 import os
-import struct
+import sys
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 from scipy.ndimage import gaussian_filter, gaussian_filter1d, distance_transform_edt, map_coordinates
 from scipy.spatial import cKDTree
 
+from tracks import TRACKS
+
+TRACK_ID = sys.argv[1] if len(sys.argv) > 1 else "nordschleife"
+CFG = TRACKS[TRACK_ID]
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-RAW = os.path.join(ROOT, "data", "raw")
-OUT = os.path.join(ROOT, "public", "data")
+RAW = os.path.join(ROOT, "data", "raw", TRACK_ID)
+OUT = os.environ.get("NK_OUT") or os.path.join(ROOT, "public", "data", TRACK_ID)
 os.makedirs(OUT, exist_ok=True)
 
 # ---------------------------------------------------------------- projection
-LAT0, LON0 = 50.3530, 6.9600  # local origin (roughly the centre of the loop)
+LAT0, LON0 = CFG["origin"]  # local origin
 R_EARTH = 6371008.8
 COS0 = math.cos(math.radians(LAT0))
 
 # terrain extent in lat/lon (same box the OSM environment query used)
-BBOX = (50.318, 6.905, 50.388, 7.012)  # south, west, north, east
+BBOX = CFG["bbox"]  # south, west, north, east
 CELL = 8.0  # heightmap spacing in metres
 LC_CELL = 4.0  # landcover spacing in metres
 
 SAMPLE_STEP = 2.0  # metres between track samples
-ROAD_HALF = 5.0  # Nordschleife is ~ 8-12 m wide
-VERGE = 3.2  # grass/run-off between asphalt edge and guard rail
+ROAD_HALF = CFG["road_half"]
+VERGE = CFG["verge"]  # grass/run-off between asphalt edge and guard rail
 
 
 def to_local(lat, lon):
@@ -95,27 +98,43 @@ def load_dem():
 dem = load_dem()
 
 # ---------------------------------------------------------------- track centre line
-rel_data = json.load(open(os.path.join(RAW, "nordschleife_rel.json")))
+CL = CFG["centerline"]
+rel_data = json.load(open(os.path.join(RAW, CL["file"])))
 relation = [e for e in rel_data["elements"] if e["type"] == "relation"][0]
 ways = {e["id"]: e for e in rel_data["elements"] if e["type"] == "way"}
 
 pts = []  # (lat, lon)
 way_marks = []  # (index into pts, name)
-for m in relation["members"]:
-    w = ways[m["ref"]]
-    g = [(p["lat"], p["lon"]) for p in w["geometry"]]
-    if pts and pts[-1] == g[0]:
-        g = g[1:]
-    way_marks.append((len(pts), w["tags"].get("name")))
-    pts.extend(g)
-if pts[0] == pts[-1]:
-    pts.pop()
+if CL["kind"] == "relation":
+    # ordered member ways named after the corners
+    for m in relation["members"]:
+        w = ways[m["ref"]]
+        g = [(p["lat"], p["lon"]) for p in w["geometry"]]
+        if pts and pts[-1] == g[0]:
+            g = g[1:]
+        way_marks.append((len(pts), w["tags"].get("name")))
+        pts.extend(g)
+    if pts[0] == pts[-1]:
+        pts.pop()
 
-# rotate the loop so it starts at the T13 gantry (the Touristenfahrten start/finish)
-start_idx = next(i for i, n in way_marks if n == "T13")
-pts = pts[start_idx:] + pts[:start_idx]
-way_marks = [((i - start_idx) % len(pts), n) for i, n in way_marks]
-way_marks.sort()
+    # rotate the loop so it starts at the start way (Nordschleife: the T13 Touristenfahrten gantry)
+    start_idx = next(i for i, n in way_marks if n == CL["start_way"])
+    pts = pts[start_idx:] + pts[:start_idx]
+    way_marks = [((i - start_idx) % len(pts), n) for i, n in way_marks]
+    way_marks.sort()
+else:
+    # one closed way: orient it in the race direction and start at the start/finish node
+    pts = [(p["lat"], p["lon"]) for p in ways[CL["way"]]["geometry"]]
+    if pts[0] == pts[-1]:
+        pts.pop()
+    loc = np.array([to_local(a, b) for a, b in pts])
+    # shoelace with z pointing south: > 0 means the way runs clockwise on the map
+    cw = np.sum(loc[:, 0] * np.roll(loc[:, 1], -1) - np.roll(loc[:, 0], -1) * loc[:, 1]) > 0
+    if cw != CL["clockwise"]:
+        pts = pts[::-1]
+    sx, sz = to_local(*CL["start"])
+    start_idx = int(np.argmin([(x - sx) ** 2 + (z - sz) ** 2 for x, z in (to_local(a, b) for a, b in pts)]))
+    pts = pts[start_idx:] + pts[:start_idx]
 
 P = np.array([to_local(a, b) for a, b in pts])  # N x 2 (x, z)
 
@@ -176,8 +195,10 @@ print(f"track length {LENGTH:.1f} m, {N} samples @ {STEP:.3f} m")
 
 # sectors (corner names) -> distance along track
 sectors = []
+if "sectors" in CFG:
+    sectors = [{"name": name, "s": float(s_at)} for name, s_at in CFG["sectors"]]
 for idx, name in way_marks:
-    if not name or name == "Nürburgring Nordschleife":
+    if not name or name in CL.get("skip_names", []):
         continue
     s_at = float(np.interp(idx, param, s_new))
     if sectors and sectors[-1]["name"] == name:
@@ -190,8 +211,12 @@ print("sectors:", len(sectors))
 # ---------------------------------------------------------------- elevation profile
 lat_c, lon_c = from_local_np(C[:, 0], C[:, 1])
 Y = dem(lat_c, lon_c)
-Y = gaussian_filter1d(Y, 12, mode="wrap")  # ~24 m sigma: DEM is 30 m data
-Y_dem = Y.copy()
+Y = gaussian_filter1d(Y, CFG["elev_sigma"], mode="wrap")
+FLAT = CFG.get("elev_flatten")
+if FLAT is not None:
+    # flat land: the DEM relief is mostly surface noise (buildings, trees)
+    ELEV_REF = float(np.median(Y))
+    Y = ELEV_REF + (Y - ELEV_REF) * FLAT
 
 
 def sector_s(name):
@@ -204,13 +229,7 @@ def sector_end(name):
 
 
 # famous crests / jumps (the 30 m DEM smooths them away), modelled as sharp bumps
-crests = [
-    ("Flugplatz", sector_s("Flugplatz") + 150, 1.6, 14),
-    ("Sprunghügel", sector_s("Sprunghügel") + 120, 1.4, 12),
-    ("Pflanzgarten", sector_s("Pflanzgarten") + 60, 1.1, 10),
-    ("Quiddelbacher Höhe", sector_s("Quiddelbacher Höhe") + 120, 0.9, 16),
-    ("Schwedenkreuz", sector_s("Schwedenkreuz") + 260, 0.8, 18),
-]
+crests = [(name, sector_s(name) + off, amp, sig) for name, off, amp, sig in CFG["crests"]]
 idx = np.arange(N) * STEP
 for name, s0, amp, sig in crests:
     d = (idx - s0 + LENGTH / 2) % LENGTH - LENGTH / 2
@@ -229,19 +248,20 @@ curv_s = gaussian_filter1d(curv, 3, mode="wrap")
 
 # bank: positive lifts the right-hand edge; a left-hander (curv < 0) gets mild positive bank
 bank = np.clip(-curv_s * 18.0, -0.05, 0.05)
-k0, k1 = sector_s("Karussell"), sector_s("Karussell") + 150
-in_k = (idx > k0 + 25) & (idx < k1 - 20)
-w = np.zeros(N)
-w[in_k] = 1
-w = gaussian_filter1d(w, 6, mode="wrap")
-karussell_sign = -np.sign(np.mean(curv_s[in_k]))
-bank = bank * (1 - w) + w * 0.30 * karussell_sign
+for name, length, amount in CFG["banked"]:  # steeply banked bends (Karussell)
+    k0, k1 = sector_s(name), sector_s(name) + length
+    in_k = (idx > k0 + 25) & (idx < k1 - 20)
+    w = np.zeros(N)
+    w[in_k] = 1
+    w = gaussian_filter1d(w, 6, mode="wrap")
+    turn_sign = -np.sign(np.mean(curv_s[in_k]))
+    bank = bank * (1 - w) + w * amount * turn_sign
+    print(name, "turn sign", turn_sign)
 bank = gaussian_filter1d(bank, 4, mode="wrap")
-print("Karussell turn sign", karussell_sign)
 
-# width: wider at Döttinger Höhe straight and the start area
+# width: wider on the long straights and the start area
 half = np.full(N, ROAD_HALF)
-for name, extra in [("Döttinger Höhe", 1.5), ("T13", 2.0), ("Antoniusbuche", 1.0), ("Hohe Acht", -0.4), ("Kesselchen", 0.3)]:
+for name, extra in CFG["widths"]:
     a, b = sector_s(name), sector_end(name)
     m = (idx >= a) & (idx < b)
     half[m] += extra
@@ -278,7 +298,11 @@ gz = z_min + np.arange(NZ) * CELL
 GX, GZ = np.meshgrid(gx, gz)
 glat, glon = from_local_np(GX, GZ)
 H = dem(glat.ravel(), glon.ravel()).reshape(NZ, NX)
-H = gaussian_filter(H, 1.6)
+if FLAT is None:
+    H = gaussian_filter(H, 1.6)
+else:
+    H = gaussian_filter(H, 5.0)
+    H = ELEV_REF + (H - ELEV_REF) * FLAT
 print(f"terrain {NX}x{NZ} cells @ {CELL} m, h {H.min():.1f}..{H.max():.1f}")
 
 # carve the terrain under the road: road surface everywhere within the guard rails, then
@@ -293,9 +317,7 @@ inner = half[nearest] + VERGE + 1.5
 blend = np.clip((dist - inner) / 38.0, 0, 1)
 blend = blend * blend * (3 - 2 * blend)
 H = (road_h - 0.55) * (1 - blend) + H * blend
-H_MIN = float(H.min()) - 1.0
-q = np.clip(np.round((H - H_MIN) * 100), 0, 65535).astype("<u2")
-q.tofile(os.path.join(OUT, "terrain.bin"))
+del GX, GZ, glat, glon, lat_off, road_h, blend, nearest, dem  # small-RAM build boxes: free early
 
 # ---------------------------------------------------------------- environment OSM
 env = json.load(open(os.path.join(RAW, "env.json")))["elements"]
@@ -330,6 +352,79 @@ def assemble_rings(members, role):
                 break
         rings.append([to_local(a, b) for a, b in ring])
     return rings
+
+
+def terrain_at(x, z):
+    fx = (np.asarray(x) - x_min) / CELL
+    fz = (np.asarray(z) - z_min) / CELL
+    return map_coordinates(H, [fz, fx], order=1, mode="nearest")
+
+
+# ---------------------------------------------------------------- water surfaces
+# Lakes and canals are drawn as flat water meshes (world.json "water"); the terrain is
+# dug out underneath so the shore follows the OSM outline. Tracks without water_mesh
+# paint water as gravel in the landcover instead.
+water_out = None
+water_frac = None
+if CFG["water_mesh"]:
+    WATER_W = {"river": 20.0, "canal": 10.0, "stream": 3.0, "drain": 2.5, "ditch": 2.0}
+
+    def is_water(t):
+        return (t.get("natural") == "water" or t.get("landuse") in ("reservoir", "basin")) and "building" not in t
+
+    polys = []  # (outer ring, inner rings)
+    for e in env:
+        t = e.get("tags", {})
+        if e["type"] == "way" and "geometry" in e and is_water(t):
+            xy = geom_xy(e["geometry"])
+            if len(xy) >= 4 and xy[0] == xy[-1]:
+                polys.append((xy[:-1], []))
+    for e in env_rels:
+        if is_water(e.get("tags", {})):
+            inners = [r[:-1] if r[0] == r[-1] else r for r in assemble_rings(e["members"], "inner")]
+            for r in assemble_rings(e["members"], "outer"):
+                if r[0] == r[-1]:
+                    r = r[:-1]
+                if len(r) >= 3:
+                    polys.append((r, [ri for ri in inners if len(ri) >= 3]))
+    lines = []  # (width, polyline)
+    for e in env:
+        t = e.get("tags", {})
+        if e["type"] == "way" and "geometry" in e and t.get("waterway") in WATER_W and t.get("tunnel") in (None, "no"):
+            try:
+                wdt = float(t.get("width", "").replace("m", "").strip())
+            except ValueError:
+                wdt = WATER_W[t["waterway"]]
+            xy = geom_xy(e["geometry"])
+            if len(xy) >= 2:
+                lines.append((min(max(wdt, 1.5), 40.0), xy))
+    # coverage per heightmap vertex from a 2 m raster (4 x 4 sub-pixels per cell)
+    SUB = 4
+    wimg = Image.new("L", (NX * SUB, NZ * SUB), 0)
+    wdraw = ImageDraw.Draw(wimg)
+    to_wpx = lambda xy: [((x - x_min) / CELL * SUB + SUB / 2, (z - z_min) / CELL * SUB + SUB / 2) for x, z in xy]
+    for outer, inners in polys:
+        wdraw.polygon(to_wpx(outer), fill=255)
+        for ri in inners:
+            wdraw.polygon(to_wpx(ri), fill=0)
+    for wdt, xy in lines:
+        wdraw.line(to_wpx(xy), fill=255, width=max(1, int(round(wdt / CELL * SUB))), joint="curve")
+    water_frac = np.asarray(wimg, dtype=np.float32).reshape(NZ, SUB, NX, SUB).mean((1, 3)) / 255
+    # water level: a little below the bank (sampled on the undug terrain)
+    level = lambda xy: round(float(np.percentile(terrain_at([p[0] for p in xy], [p[1] for p in xy]), 20)) - 0.45, 2)
+    rnd = lambda xy: [[round(x, 1), round(z, 1)] for x, z in xy]
+    water_out = {
+        "polys": [{"y": level(o), "p": rnd(o), "holes": [rnd(ri) for ri in inn]} for o, inn in polys],
+        "lines": [{"y": level(xy), "w": wdt, "p": rnd(xy)} for wdt, xy in lines],
+    }
+    # dig out (never under the circuit: canals pass through culverts there)
+    keep_road = np.clip((dist - inner) / 8.0, 0, 1)
+    H = H - 1.6 * gaussian_filter(water_frac, 0.6) * keep_road
+    print("water bodies", len(polys), "waterways", len(lines))
+
+H_MIN = float(H.min()) - 1.0
+q = np.clip(np.round((H - H_MIN) * 100), 0, 65535).astype("<u2")
+q.tofile(os.path.join(OUT, "terrain.bin"))
 
 
 LC_NX = int(math.ceil((x_max - x_min) / LC_CELL))
@@ -417,10 +512,14 @@ for e in env:
 # road corridor of the Nordschleife itself: keep landcover clean (the road mesh covers it)
 lc_x = x_min + (np.arange(LC_NX) + 0.5) * LC_CELL
 lc_z = z_min + (np.arange(LC_NZ) + 0.5) * LC_CELL
-LGX, LGZ = np.meshgrid(lc_x, lc_z)
-ldist, lnear = tree.query(np.stack([LGX.ravel(), LGZ.ravel()], 1), k=1)
-ldist = ldist.reshape(LC_NZ, LC_NX)
-lnear = lnear.reshape(LC_NZ, LC_NX)
+ldist = np.empty((LC_NZ, LC_NX))
+lnear = np.empty((LC_NZ, LC_NX), dtype=np.intp)
+for r0 in range(0, LC_NZ, 256):  # in row blocks to keep peak memory low
+    LGX, LGZ = np.meshgrid(lc_x, lc_z[r0:r0 + 256])
+    dq, nq = tree.query(np.stack([LGX.ravel(), LGZ.ravel()], 1), k=1)
+    ldist[r0:r0 + 256] = dq.reshape(LGX.shape)
+    lnear[r0:r0 + 256] = nq.reshape(LGX.shape)
+del LGX, LGZ, dq, nq
 
 arr = {k: np.asarray(v, dtype=np.float32) / 255 for k, v in layers.items()}
 # forest edges should stay away from the guard rails (marshal clearings)
@@ -436,22 +535,25 @@ forest = np.maximum(arr["forest"], arr["scrub"] * 0.6)
 # RGB only: browsers may premultiply alpha on decode, which would destroy RGB where A == 0
 splat = np.stack([forest, arr["field"], arr["urban"]], -1)
 Image.fromarray(np.clip(splat * 255, 0, 255).astype(np.uint8), "RGB").save(os.path.join(OUT, "landcover.png"), optimize=True)
-rock = np.maximum(arr["rock"], arr["water"] * 0.8)
+rock = arr["rock"] if CFG["water_mesh"] else np.maximum(arr["rock"], arr["water"] * 0.8)
 Image.fromarray(np.clip(rock * 255, 0, 255).astype(np.uint8), "L").save(os.path.join(OUT, "landcover_rock.png"), optimize=True)
+urban = arr["urban"]
+del arr, layers, draws, splat, rock, clear, near_road, lnear  # free memory before the tree scatter
 
 # ---------------------------------------------------------------- buildings
 LEVEL_H = 3.0
 DEFAULT_LEVELS = {"house": 2, "detached": 2, "residential": 2.5, "apartments": 4, "hotel": 4, "garage": 1, "garages": 1,
                   "shed": 1, "hut": 1, "barn": 2, "farm_auxiliary": 1.5, "commercial": 2.5, "industrial": 2.5,
                   "grandstand": 5, "church": 5, "roof": 1.5, "carport": 1, "retail": 2}
-hm_interp = None
 
 
-def terrain_at(x, z):
-    fx = (np.asarray(x) - x_min) / CELL
-    fz = (np.asarray(z) - z_min) / CELL
-    return map_coordinates(H, [fz, fx], order=1, mode="nearest")
+stand_corridor = None
+if CFG.get("stands"):
+    # grandstand outlines may include the bridges over the circuit (Shanghai's main stand
+    # "wings"): cut the track corridor out and keep the seating body (needs shapely)
+    from shapely.geometry import LinearRing, Polygon
 
+    stand_corridor = LinearRing(C).buffer(float(half.max()) + VERGE + 2.0)
 
 buildings = []
 for e in env:
@@ -463,6 +565,15 @@ for e in env:
         xy = xy[:-1]
     if len(xy) < 3:
         continue
+    if stand_corridor is not None and t["building"] == "grandstand":
+        body = Polygon(xy).buffer(0).difference(stand_corridor)
+        if body.is_empty:
+            continue
+        if body.geom_type != "Polygon":
+            body = max(body.geoms, key=lambda g: g.area)
+        xy = [(float(x), float(z)) for x, z in body.simplify(0.5).exterior.coords[:-1]]
+        if len(xy) < 3:
+            continue
     arr_xy = np.array(xy)
     cx, cz = arr_xy.mean(0)
     # keep buildings away from the race surface
@@ -489,7 +600,10 @@ for e in env:
     base = float(terrain_at(arr_xy[:, 0], arr_xy[:, 1]).min()) - 0.3
     kind = t["building"]
     roof = "flat" if (area > 400 or kind in ("industrial", "commercial", "grandstand", "retail", "garages")) else "gable"
-    buildings.append({"h": round(h, 1), "b": round(base, 2), "r": roof, "p": [[round(x, 2), round(z, 2)] for x, z in xy]})
+    bd = {"h": round(h, 1), "b": round(base, 2), "r": roof, "p": [[round(x, 2), round(z, 2)] for x, z in xy]}
+    if CFG.get("stands") and kind == "grandstand":
+        bd["k"] = "g"
+    buildings.append(bd)
 print("buildings", len(buildings))
 
 # ---------------------------------------------------------------- trees
@@ -513,10 +627,27 @@ near_zone = (ldist < 190).astype(np.float32)
 x1, z1 = scatter(1 / 36.0, forest_mask * near_zone, 0)
 x2, z2 = scatter(1 / 170.0, forest_mask * (1 - near_zone), 0)
 # hedges / single trees on fields and verges
-open_land = (1 - forest_mask) * (1 - arr["urban"]) * np.clip((ldist - (ROAD_HALF + VERGE + 4)) / 10, 0, 1)
+open_land = (1 - forest_mask) * (1 - urban) * np.clip((ldist - (ROAD_HALF + VERGE + 4)) / 10, 0, 1)
 x3, z3 = scatter(1 / 2200.0, open_land, 0)
 xs = np.concatenate([x1, x2, x3])
 zs = np.concatenate([z1, z2, z3])
+if CFG["tree_rows"]:
+    # natural=tree_row: avenues along roads and canals, one tree every ~7 m
+    rx, rz = [], []
+    for e in env:
+        if e["type"] != "way" or e.get("tags", {}).get("natural") != "tree_row" or "geometry" not in e:
+            continue
+        xy = np.array(geom_xy(e["geometry"]))
+        seg_len = np.linalg.norm(np.diff(xy, axis=0), axis=1)
+        cum_r = np.concatenate([[0], np.cumsum(seg_len)])
+        if cum_r[-1] < 1:
+            continue
+        sr = np.arange(rng.random() * 3, cum_r[-1], 7.0)
+        rx.append(np.interp(sr, cum_r, xy[:, 0]) + rng.normal(0, 0.4, len(sr)))
+        rz.append(np.interp(sr, cum_r, xy[:, 1]) + rng.normal(0, 0.4, len(sr)))
+    if rx:
+        xs = np.concatenate([xs] + rx)
+        zs = np.concatenate([zs] + rz)
 # keep clear of the circuit
 dd, nn = tree.query(np.stack([xs, zs], 1))
 keep = dd > half[nn] + VERGE + 3.5
@@ -529,8 +660,11 @@ if osm_trees:
     zs = np.concatenate([zs, ot[:, 1]])
 inside = (xs > x_min) & (xs < x_max) & (zs > z_min) & (zs < z_max)
 xs, zs = xs[inside], zs[inside]
-# Eifel: spruce plantations mixed with beech; kind 0 = spruce, 1 = broadleaf
-kind = (rng.random(len(xs)) < 0.38).astype(np.float32)
+if water_frac is not None:
+    dry = map_coordinates(water_frac, [(zs - z_min) / CELL, (xs - x_min) / CELL], order=1) < 0.15
+    xs, zs = xs[dry], zs[dry]
+# kind 0 = spruce, 1 = broadleaf
+kind = (rng.random(len(xs)) < CFG["broadleaf"]).astype(np.float32)
 scale = (0.75 + rng.random(len(xs)) * 0.6).astype(np.float32)
 trees = np.stack([np.round(xs * 4), np.round(zs * 4), np.round(scale * 1000), kind], 1).astype("<i2")
 trees.tofile(os.path.join(OUT, "trees.bin"))
@@ -553,15 +687,17 @@ for e in env:
 # secondary roads: keep geometry clipped to the terrain box and drop tiny bits
 roads_out = [r for r in roads_out if len(r["p"]) >= 2]
 
-json.dump({"buildings": buildings, "roads": roads_out, "places": places, "peaks": peaks},
-          open(os.path.join(OUT, "world.json"), "w"), separators=(",", ":"))
+world = {"buildings": buildings, "roads": roads_out, "places": places, "peaks": peaks}
+if water_out:
+    world["water"] = water_out
+json.dump(world, open(os.path.join(OUT, "world.json"), "w"), separators=(",", ":"))
 
 # ---------------------------------------------------------------- track.json
 r2 = lambda a: [round(float(v), 2) for v in a]
 r3 = lambda a: [round(float(v), 3) for v in a]
 track = {
-    "name": "Nürburgring Nordschleife",
-    "source": "OpenStreetMap relation 38566 (ODbL) + AWS Terrain Tiles (Terrarium)",
+    "name": CFG["name"],
+    "source": CFG["source"],
     "origin": {"lat": LAT0, "lon": LON0},
     "length": round(LENGTH, 2),
     "step": STEP,
@@ -574,6 +710,8 @@ track = {
     "landcover": {"x0": x_min, "z0": z_min, "nx": LC_NX, "nz": LC_NZ, "cell": LC_CELL},
     "elevation": {"min": round(float(Y.min()), 1), "max": round(float(Y.max()), 1)},
 }
+if "verge_fall" in CFG:
+    track["vergeFall"] = list(CFG["verge_fall"])
 json.dump(track, open(os.path.join(OUT, "track.json"), "w"), separators=(",", ":"), ensure_ascii=False)
 print(f"elevation along track {Y.min():.1f} .. {Y.max():.1f} m")
 for f in os.listdir(OUT):
