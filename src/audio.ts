@@ -1,4 +1,4 @@
-// Synthesised sound (Web Audio): two-stroke kart engine, tyres, wind, impacts.
+// Synthesised sound (Web Audio): electric drive, tyres, wind, impacts.
 // No sample files are needed, so the game ships without third party audio.
 
 export class GameAudio {
@@ -44,9 +44,9 @@ export class GameAudio {
 
     // engine
     this.engOsc1 = ctx.createOscillator();
-    this.engOsc1.type = "sawtooth";
+    this.engOsc1.type = "sine";
     this.engOsc2 = ctx.createOscillator();
-    this.engOsc2.type = "square";
+    this.engOsc2.type = "triangle";
     const shaper = ctx.createWaveShaper();
     const curve = new Float32Array(1024);
     for (let i = 0; i < 1024; i++) {
@@ -67,7 +67,7 @@ export class GameAudio {
     this.lfo = ctx.createOscillator();
     this.lfo.frequency.value = 23;
     const lfoGain = ctx.createGain();
-    lfoGain.gain.value = 3;
+    lfoGain.gain.value = 0.25;
     this.lfo.connect(lfoGain);
     lfoGain.connect(this.engOsc1.frequency);
     lfoGain.connect(this.engOsc2.frequency);
@@ -98,13 +98,13 @@ export class GameAudio {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
     const r = Math.min(1.6, Math.abs(speed) / maxSpeed);
-    // single speed kart: revs follow road speed, a clutch keeps them up at standstill
+    // A single-speed electric drive rises smoothly with road speed.
     const rpm = 0.22 + r * 0.78 + (airborne ? 0.08 * throttle : 0);
-    const f = 48 + rpm * 150;
+    const f = 160 + r * 680;
     this.engOsc1.frequency.setTargetAtTime(f, t, 0.05);
-    this.engOsc2.frequency.setTargetAtTime(f * 0.5, t, 0.05);
+    this.engOsc2.frequency.setTargetAtTime(f * 1.99, t, 0.05);
     this.engFilter.frequency.setTargetAtTime(500 + rpm * 2400 * (0.5 + 0.5 * Math.max(0, throttle)), t, 0.05);
-    const eg = paused ? 0 : 0.06 + 0.1 * Math.max(0, throttle) + 0.04 * rpm;
+    const eg = paused ? 0 : Math.min(0.09, r * 0.05 + 0.035 * Math.max(0, throttle));
     this.engGain.gain.setTargetAtTime(eg, t, 0.08);
     this.squealGain.gain.setTargetAtTime(paused || airborne ? 0 : Math.min(0.22, Math.max(0, slip - 0.15) * 0.25), t, 0.06);
     this.windGain.gain.setTargetAtTime(paused ? 0 : Math.min(0.25, r * r * 0.22), t, 0.2);
@@ -149,10 +149,6 @@ export class GameAudio {
 
   landing(strength: number) {
     this.burst(0.18, 260, Math.min(0.7, strength * 0.12));
-  }
-
-  boost() {
-    this.burst(0.9, 400, 0.35, "bandpass", 2600);
   }
 
   explosion(distance: number) {

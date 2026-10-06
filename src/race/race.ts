@@ -5,6 +5,7 @@
 // Race state: port of Open Street Kart scripts/track_state.gd (modes, speed modes,
 // live ranking, item slots, race end) and prefabs/player_spawner.gd (grid, countdown).
 import * as THREE from "three";
+import { carOverlap } from "./carCollision";
 import { Track } from "../track";
 import { BotBrain, Brain, Controls, UserBrain } from "./brain";
 import { ParticleSystem, SkidMarks } from "./effects";
@@ -152,7 +153,7 @@ export class Race {
       kart.accel = 8 + maxSpeed * 0.12;
       kart.placeAt(track.wrapS(s), lat, track.deltaS(opts.course.startS, track.wrapS(s)));
       const look: KartLook = isPlayer ? { color: opts.playerColor, accent: 0x15171c, helmet: 0xf2f2f2, number: 1 } : LIVERIES[(botIdx + 1) % LIVERIES.length];
-      const model = new KartModel(look);
+      const model = new KartModel(look, isPlayer);
       this.group.add(model.root);
       let brain: Brain;
       let name: string;
@@ -174,7 +175,7 @@ export class Race {
         brain,
         look,
         isPlayer,
-        slots: opts.mode === GameMode.FREE ? null : new PlayerItemSlotsState(maxSpeed, opts.mode),
+        slots: opts.mode === GameMode.VERSUS ? new PlayerItemSlotsState(maxSpeed, opts.mode) : null,
         finishTime: -1,
         rank: slot + 1,
         stuck: 0,
@@ -202,10 +203,12 @@ export class Race {
       const d = JSON.parse(raw) as { t: number[]; p: number[] };
       const frames: GhostFrame[] = d.t.map((t, k) => ({ t, x: d.p[k * 4] / 10, y: d.p[k * 4 + 1] / 10, z: d.p[k * 4 + 2] / 10, h: d.p[k * 4 + 3] / 1000 }));
       const model = new KartModel({ color: 0x9fd8ff, accent: 0x9fd8ff, helmet: 0xffffff, number: 0 }, false);
+      model.dispose();
+      const ghostMaterial = new THREE.MeshBasicMaterial({ color: 0x9fd8ff, transparent: true, opacity: 0.32, depthWrite: false });
       model.root.traverse((o) => {
         const m = o as THREE.Mesh;
         if (m.isMesh) {
-          m.material = new THREE.MeshBasicMaterial({ color: 0x9fd8ff, transparent: true, opacity: 0.32, depthWrite: false });
+          m.material = ghostMaterial;
           m.castShadow = false;
         }
       });
@@ -293,7 +296,7 @@ export class Race {
     if (racing || this.phase === "finished") this.time += dt;
     for (const r of this.racers) {
       r.brain.tick(dt, r.kart);
-      const input = racing || this.phase === "finished" ? r.brain.input : { throttle: 0, steer: 0, drift: false };
+      const input = racing || this.phase === "finished" ? r.brain.input : { throttle: 0, steer: 0 };
       r.kart.frozen = !(racing || this.phase === "finished");
       r.kart.step(dt, input);
       this.kartEvents(r);
@@ -324,7 +327,6 @@ export class Race {
         this.audio.landing(e.landed);
         this.shake = Math.min(1, this.shake + e.landed * 0.04);
       }
-      if (e.boostFired) this.audio.boost();
     }
     if (e.railHit > 3) {
       for (let n = 0; n < Math.min(14, e.railHit); n++) {
@@ -406,14 +408,12 @@ export class Race {
       if (r.isPlayer) use = r.brain.useItem;
       else if (r.brain instanceof BotBrain && r.finishTime < 0) {
         const first = r.slots.first();
-        if (first === SlotItem.SPEED_BOOST) use = r.brain.wantsItem("boost", r.kart, false);
         if (first === SlotItem.AIR_BOMB) {
           const target = this.racers.some((o) => o !== r && o.kart.progress - r.kart.progress > 35 && o.kart.progress - r.kart.progress < 95);
-          use = r.brain.wantsItem("bomb", r.kart, target);
+          use = r.brain.wantsItem(target);
         }
       }
-      const used = r.slots.tick(dt, Math.max(0, leader.kart.progress - r.kart.progress), use, r.rank);
-      if (used === SlotItem.SPEED_BOOST) r.kart.applySpeedBoost(2.5);
+      const used = r.slots.tick(dt, Math.max(0, leader.kart.progress - r.kart.progress), use);
       if (used === SlotItem.AIR_BOMB) this.launchBomb(r);
     }
   }
@@ -475,7 +475,6 @@ export class Race {
           k.pos.y += 0.1;
           k.grounded = false;
           k.spin = 0.6 + 0.6 * di;
-          k.endDrift();
           if (r.isPlayer) {
             this.events.push({ text: "被炸弹击中!", t: 0 });
             this.shake = 1;
@@ -491,20 +490,13 @@ export class Race {
   }
 
   private collideKarts() {
-    const R = 0.95;
     for (let a = 0; a < this.racers.length; a++) {
       for (let b = a + 1; b < this.racers.length; b++) {
         const ka = this.racers[a].kart;
         const kb = this.racers[b].kart;
-        const dx = kb.pos.x - ka.pos.x;
-        const dz = kb.pos.z - ka.pos.z;
-        const dy = Math.abs(kb.pos.y - ka.pos.y);
-        const d2 = dx * dx + dz * dz;
-        if (d2 > 4 * R * R || dy > 1.2 || d2 < 1e-6) continue;
-        const d = Math.sqrt(d2);
-        const nx = dx / d;
-        const nz = dz / d;
-        const pen = 2 * R - d;
+        const contact = carOverlap(ka, kb);
+        if (!contact) continue;
+        const { nx, nz, depth: pen } = contact;
         ka.pos.x -= nx * pen * 0.5;
         ka.pos.z -= nz * pen * 0.5;
         kb.pos.x += nx * pen * 0.5;
@@ -532,7 +524,7 @@ export class Race {
         const ds = o.kart.progress - r.kart.progress;
         if (ds > 0 && ds < 14) {
           const dl = o.kart.q.lat - r.kart.q.lat;
-          if (Math.abs(dl) < 1.8) avoid = dl > 0 ? -2.2 : 2.2;
+          if (Math.abs(dl) < 2.3) avoid = dl > 0 ? -2.5 : 2.5;
         }
       }
       r.brain.avoid += (avoid - r.brain.avoid) * 0.05;
@@ -599,29 +591,18 @@ export class Race {
     if (!near) return;
     // rear wheel positions
     for (let w = 0; w < 2; w++) {
-      const side = w === 0 ? 1 : -1;
-      const px = k.pos.x - fx * 0.55 - rx * 0.62 * side;
-      const pz = k.pos.z - fz * 0.55 - rz * 0.62 * side;
-      const sliding = k.grounded && !k.offTrack && (k.drifting || slip > 2.5);
+      const wheel = r.model.rearWheelsLocal[w];
+      const px = k.pos.x + fx * wheel.z - rx * wheel.x;
+      const pz = k.pos.z + fz * wheel.z - rz * wheel.x;
+      const sliding = k.grounded && !k.offTrack && (slip > 2.5);
       const id = (r.isPlayer ? 10 : 20 + this.racers.indexOf(r) * 2) + w;
-      this.skids.add(id, sliding ? new THREE.Vector3(px, k.pos.y + 0.02, pz) : null, rx, rz, Math.min(1, slip / 6 + (k.drifting ? 0.4 : 0)));
+      this.skids.add(id, sliding ? new THREE.Vector3(px, k.pos.y + 0.02, pz) : null, rx, rz, Math.min(1, slip / 6));
       if (sliding && Math.random() < dt * 40) {
         this.smoke.emit({ x: px, y: k.pos.y + 0.15, z: pz, vx: k.vel.x * 0.2 + (Math.random() - 0.5), vy: 0.6 + Math.random() * 0.6, vz: k.vel.z * 0.2 + (Math.random() - 0.5), max: 1.2 + Math.random() * 0.6, size0: 0.5, size1: 2.6, r: 0.85, g: 0.85, b: 0.86, a: 0.35, drag: 1.4, grav: -0.3 });
       }
       if (k.offTrack && k.grounded && k.speed > 4 && Math.random() < dt * 30) {
         this.smoke.emit({ x: px, y: k.pos.y + 0.1, z: pz, vx: (Math.random() - 0.5) * 2, vy: 1 + Math.random() * 1.5, vz: (Math.random() - 0.5) * 2, max: 1.0, size0: 0.4, size1: 1.8, r: 0.42, g: 0.36, b: 0.24, a: 0.5, drag: 1.5, grav: 1 });
       }
-      // drift sparks colour = charge (blue -> orange), like OSK's drift particles
-      if (k.drifting && Math.random() < dt * 50) {
-        const charged = k.driftTime > 1.0;
-        this.glow.emit({ x: px, y: k.pos.y + 0.1, z: pz, vx: -fx * 2 + (Math.random() - 0.5) * 2, vy: 1 + Math.random() * 2, vz: -fz * 2 + (Math.random() - 0.5) * 2, max: 0.25, size0: 0.18, size1: 0.05, r: charged ? 1 : 0.4, g: charged ? 0.6 : 0.7, b: charged ? 0.2 : 1, a: 1, drag: 3, grav: 6 });
-      }
-    }
-    // boost flames from the exhaust (OSK SpeedGPUParticles3D)
-    if (k.isBoosting() && Math.random() < dt * 90) {
-      const ex = k.pos.x - fx * 1.05 - rx * 0.42 * -1;
-      const ez = k.pos.z - fz * 1.05 - rz * 0.42 * -1;
-      this.glow.emit({ x: ex, y: k.pos.y + 0.42, z: ez, vx: -fx * 6 + k.vel.x * 0.8, vy: 0.5, vz: -fz * 6 + k.vel.z * 0.8, max: 0.22, size0: 0.55, size1: 0.1, r: 0.5, g: 0.75, b: 1, a: 1, drag: 4, grav: 0 });
     }
   }
 
@@ -645,9 +626,11 @@ export class Race {
 
   dispose(scene: THREE.Scene) {
     scene.remove(this.group);
+    for (const racer of this.racers) racer.model.dispose();
+    this.ghost?.model.dispose();
     this.group.traverse((o) => {
       const m = o as THREE.Mesh;
-      if (m.isMesh) m.geometry.dispose();
+      if (m.isMesh && !m.geometry.userData.sharedVehicle) m.geometry.dispose();
     });
     this.startLamps.forEach((l) => (l.material as THREE.MeshBasicMaterial).color.setHex(0x330000));
   }

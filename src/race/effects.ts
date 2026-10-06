@@ -1,4 +1,4 @@
-// Particles (OSK drift GPUParticles3D / speed boost particles), skid marks, explosions.
+// Road dust, tyre smoke, skid marks and explosion particles.
 import * as THREE from "three";
 
 const VS = `

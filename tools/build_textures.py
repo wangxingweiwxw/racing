@@ -30,7 +30,7 @@ for name, rel in SOURCES.items():
         im = im.resize((size, size), Image.LANCZOS)
         im.save(os.path.join(OUT, f"{name}_{kind}.jpg"), quality=88, optimize=True)
         print(name, kind, os.path.getsize(os.path.join(OUT, f"{name}_{kind}.jpg")))
-for f in ("item_slot_speed_boost.png", "item_slot_air_bomb.png"):
+for f in ("item_slot_air_bomb.png",):
     Image.open(os.path.join(OSK, "textures/hud/slot_item", f)).save(os.path.join(OUT, f), optimize=True)
 
 # The OSK asphalt has urban lane markings. Crop a clean band and mirror it so it

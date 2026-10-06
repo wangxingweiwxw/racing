@@ -2,7 +2,7 @@
 // velocity direction with fast horizontal easing and slow vertical easing.
 import * as THREE from "three";
 import { Track } from "../track";
-import { Kart, SPEED_BOOST } from "./kart";
+import { Kart } from "./kart";
 
 export type CamMode = "chase" | "far" | "hood";
 export const CAM_MODES: CamMode[] = ["chase", "far", "hood"];
@@ -29,7 +29,7 @@ export class CameraRig {
 
   follow(k: Kart, dt: number, shake: number, lookBack: boolean) {
     const fwd = new THREE.Vector3(Math.sin(k.heading), 0, -Math.cos(k.heading));
-    // OSK: aim along the velocity once moving (keeps drifts readable), else along the kart
+    // OSK: aim along the velocity once moving (follows the travel direction), else along the kart
     const v = new THREE.Vector3(k.vel.x, 0, k.vel.z);
     const target = v.length() > 1.0 && fwd.dot(v) > 0 ? v.normalize().lerp(fwd, 0.45).normalize() : fwd;
     if (!this.initialized) {
@@ -45,16 +45,17 @@ export class CameraRig {
     let dist = OSK_CAM_DISTANCE_FROM_PLAYER;
     let height = OSK_CAM_HEIGHT_FROM_PLAYER;
     if (this.mode === "chase") {
-      dist = 4.3 + speedK * 0.9;
-      height = 1.55;
+      dist = 5.8 + speedK * 1.1;
+      height = 1.95;
     } else if (this.mode === "far") {
-      dist = 7.5 + speedK * 1.4;
-      height = 2.7;
+      dist = 10.8 + speedK * 1.4;
+      height = 4.0;
     }
+    if (cam.aspect < 1) dist += (1 - cam.aspect) * 4.3;
     const d = lookBack ? this.dir.clone().negate() : this.dir;
     if (this.mode === "hood" && !lookBack) {
       const up = k.normal;
-      cam.position.set(k.pos.x, k.pos.y, k.pos.z).addScaledVector(up, 0.98).addScaledVector(fwd, -0.18);
+      cam.position.set(k.pos.x, k.pos.y, k.pos.z).addScaledVector(up, 1.06).addScaledVector(fwd, 1.5);
       cam.up.copy(up);
       cam.lookAt(cam.position.x + fwd.x * 10, cam.position.y + fwd.y * 10 - 0.6, cam.position.z + fwd.z * 10);
     } else {
@@ -64,14 +65,13 @@ export class CameraRig {
       const q = this.track.query(cam.position.x, cam.position.z, k.q.i);
       const minY = this.track.surfaceY(q, Math.max(-q.half - this.track.verge, Math.min(q.half + this.track.verge, q.lat))) + 0.6;
       if (cam.position.y < minY) cam.position.y = minY;
-      cam.lookAt(k.pos.x + d.x * 3, this.camY + 0.75, k.pos.z + d.z * 3);
+      cam.lookAt(k.pos.x + d.x * 4, this.camY + 0.9, k.pos.z + d.z * 4);
     }
     if (shake > 0) {
       cam.position.x += (Math.random() - 0.5) * shake * 0.18;
       cam.position.y += (Math.random() - 0.5) * shake * 0.18;
     }
-    const boost = k.isBoosting() ? 8 : 0;
-    const targetFov = 66 + speedK * 12 + boost * (k.speed / (k.maxSpeed * SPEED_BOOST));
+    const targetFov = 66 + speedK * 12;
     this.fov += (targetFov - this.fov) * (1 - Math.exp(-dt * 3));
     if (Math.abs(cam.fov - this.fov) > 0.01) {
       cam.fov = this.fov;

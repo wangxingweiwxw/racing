@@ -14,6 +14,8 @@ import { CameraRig, CAM_MODES, CamMode } from "./race/camera";
 import { GameAudio } from "./audio";
 import { UI, SetupChoice } from "./ui/ui";
 import { buildTouch } from "./ui/touch";
+import { loadCarModels } from "./race/kartModel";
+import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { loadSettings, saveSettings } from "./settings";
 import { currentTrack } from "./tracks";
 
@@ -49,7 +51,7 @@ async function boot() {
   const settings = loadSettings();
   const info = currentTrack();
   const DATA = `${BASE}data/${info.id}/`;
-  document.title = `${info.brand[0]} ${info.brand[1]}`;
+  document.title = `仰望 U9 Xtreme · ${info.label}`;
   const canvas = document.getElementById("view") as HTMLCanvasElement;
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: settings.quality > 0, powerPreference: "high-performance" });
   const applyPixelRatio = () => renderer.setPixelRatio(Math.min(devicePixelRatio, settings.quality === 2 ? 2 : settings.quality === 1 ? 1.5 : 1));
@@ -136,6 +138,14 @@ async function boot() {
   const shadowSize = () => (settings.quality === 2 ? 2048 : settings.quality === 1 ? 1024 : 0);
   const sky = new SkyLights(scene, shadowSize());
 
+  ui.setLoading(0.89, "加载仰望 U9 Xtreme 车身与材质…");
+  await loadCarModels(settings.quality);
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  const studio = new RoomEnvironment();
+  scene.environment = pmrem.fromScene(studio, 0.04).texture;
+  studio.dispose();
+  pmrem.dispose();
+
   ui.setLoading(0.92, "编译着色器…");
   await tick();
   const rig = new CameraRig(camera, track);
@@ -179,13 +189,16 @@ async function boot() {
   const controls = new Controls();
   const audio = new GameAudio();
   audio.volume = settings.volume;
-  const touch = matchMedia("(pointer: coarse)").matches;
-  if (touch) {
-    buildTouch(ui.touchHost, controls);
-    ui.touchHost.classList.remove("hidden");
-    document.getElementById("hud")!.classList.add("touch-mode");
-  }
+  buildTouch(ui.touchHost, controls);
+  ui.touchHost.classList.remove("hidden");
+  ui.onUseItem = () => { controls.touch.item = true; };
+  ui.onCamera = () => {
+    rig.mode = CAM_MODES[(CAM_MODES.indexOf(rig.mode) + 1) % CAM_MODES.length];
+    settings.camera = rig.mode;
+    saveSettings(settings);
+  };
   let race: Race | null = null;
+  controls.onBrakeRelease = () => race?.player.kart.resetBrakeHold();
   let lastChoice: SetupChoice | null = null;
   let state: "title" | "race" | "paused" | "results" = "title";
   let introT = 0;
@@ -225,6 +238,7 @@ async function boot() {
     if (state === "paused") {
       state = "race";
       ui.hideAll();
+      ui.showHud(true);
     }
   };
   ui.onRestart = () => lastChoice && startRace(lastChoice);
@@ -261,6 +275,10 @@ async function boot() {
 
   const pause = () => {
     if (state !== "race" || !race) return;
+    ui.touchHost.dispatchEvent(new Event("resetcontrols"));
+    controls.keys.clear();
+    race.player.kart.resetBrakeHold();
+    ui.showHud(false);
     state = "paused";
     ui.setPauseInfo(`${race.opts.course.name} · ${(race.player.kart.progress / 1000).toFixed(2)} / ${(race.opts.course.distance / 1000).toFixed(2)} km`);
     ui.show("pause");
@@ -337,7 +355,7 @@ async function boot() {
       }
       if (state === "results") r.update(dt);
       focus.copy(k.pos);
-      const slip = Math.abs(k.vel.x * Math.cos(k.heading) + k.vel.z * Math.sin(k.heading)) / 4 + (k.drifting ? 0.6 : 0);
+      const slip = Math.abs(k.vel.x * Math.cos(k.heading) + k.vel.z * Math.sin(k.heading)) / 4;
       audio.update(k.forwardSpeed, k.maxSpeed, r.player.brain.input.throttle, slip, k.offTrack, !k.grounded, state === "paused");
       ui.updateHud(r, dt, fps, CAM_LABEL[rig.mode]);
     }

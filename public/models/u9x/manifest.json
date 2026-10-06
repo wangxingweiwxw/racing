@@ -1,0 +1,18 @@
+{
+  "vehicle": "Yangwang U9 Xtreme",
+  "source": "gd_yangwang_u9",
+  "variants": [
+    {
+      "file": "u9x.glb",
+      "bytes": 20904132,
+      "textureMaxSize": 1024,
+      "triangles": 374034
+    },
+    {
+      "file": "u9x-lod.glb",
+      "bytes": 7771108,
+      "textureMaxSize": 512,
+      "triangles": 47243
+    }
+  ]
+}

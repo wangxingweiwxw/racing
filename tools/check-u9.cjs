@@ -1,0 +1,98 @@
+const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const fs = require('node:fs');
+const assert = require('node:assert/strict');
+const origin = process.env.BASE_URL || 'http://127.0.0.1:5173';
+(async () => {
+ const browser = await chromium.launch({channel:'msedge',headless:true,args:['--ignore-gpu-blocklist','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
+ try {
+ const page = await browser.newPage({viewport:{width:1440,height:1080},deviceScaleFactor:1});
+ const errors=[]; page.on('pageerror',e=>errors.push(e.message));
+ await page.goto(`${origin}/?track=shanghai&manual`,{waitUntil:'domcontentloaded'});
+ await page.waitForFunction(()=>window.__nk,{timeout:180000});
+ await page.evaluate(()=>{const g=window.__nk;g.startRace({...g.ui.choice,mode:0});g.advance(480,1/60,false);g.advance(1)});
+ fs.mkdirSync('checks',{recursive:true});
+ await page.screenshot({path:'checks/u9-rear.png',timeout:120000});
+ await page.evaluate(async()=>{const g=window.__nk;const root=g.race.player.model.root;const p=root.localToWorld(g.camera.position.clone().set(4,2,6));const look=root.localToWorld(g.camera.position.clone().set(0,.65,0));g.view(p.toArray(),look.toArray());g.advance(1)});
+ await page.screenshot({path:'checks/u9-front.png',timeout:120000});
+ await page.evaluate(()=>{window.__nk.view(null);window.__nk.advance(1)});
+ console.log('REAR',await page.evaluate(async()=>{const g=window.__nk;return {state:g.state,wheels:g.race.player.model.wheels.length}}));
+ assert.equal(await page.locator('#nitro-button,.drive-drift').count(),0);
+ // Test a real pointer press/release, not only synthetic control state.
+ await page.locator('.drive-pedal').hover();await page.mouse.down();
+ await page.evaluate(()=>window.__nk.advance(120,1/60,false));await page.mouse.up();
+ assert.equal(await page.evaluate(()=>window.__nk.controls.touch.throttle),0);
+ assert.ok(await page.evaluate(()=>window.__nk.race.player.kart.speed>5));
+ await page.locator('.drive-brake').hover();await page.mouse.down();
+ // Braking from speed takes time; only stationary time may arm reverse.
+ await page.evaluate(()=>window.__nk.advance(60,1/60,false));
+ assert.equal(await page.evaluate(()=>window.__nk.race.player.kart.goingBackwards),false);
+ await page.mouse.up();
+ await page.evaluate(()=>{window.__nk.race.player.kart.respawn();window.__nk.advance(1,1/60,false)});
+ await page.locator('.drive-brake').hover();await page.mouse.down();
+ await page.evaluate(()=>window.__nk.advance(119,1/60,false));
+ assert.equal(await page.evaluate(()=>window.__nk.race.player.kart.speed),0);
+ assert.equal(await page.locator('#gear').textContent(),'D');
+ await page.evaluate(()=>window.__nk.advance(1,1/60,false));
+ assert.equal(await page.locator('#gear').textContent(),'R');
+ await page.evaluate(()=>window.__nk.advance(240,1/60,false));
+ const reversing=await page.evaluate(()=>{const k=window.__nk.race.player.kart;return {speed:k.speed*3.6,forward:k.forwardSpeed}});
+ assert.ok(reversing.speed<=5+1e-8 && reversing.forward<0,JSON.stringify(reversing));
+ await page.evaluate(()=>window.__nk.advance(1));
+ await page.screenshot({path:'checks/u9-driving.png',timeout:120000});
+ await page.mouse.up();
+ assert.equal(await page.evaluate(()=>window.__nk.race.player.kart.reverseHoldTime),0);
+ await page.evaluate(()=>window.__nk.advance(1,1/60,false));
+ // The keyboard uses the same hold behavior. Old drift keys do nothing.
+ await page.evaluate(()=>window.__nk.race.player.kart.respawn());
+ await page.keyboard.down('s');await page.keyboard.down(' ');
+ await page.evaluate(()=>window.__nk.advance(90,1/60,false));
+ assert.equal(await page.evaluate(()=>window.__nk.race.player.kart.speed),0);
+ await page.keyboard.up(' ');
+ await page.locator('[aria-label="切换视角"]').click();
+ assert.equal(await page.evaluate(()=>window.__nk.rig.mode),'far');
+ await page.locator('[aria-label="暂停与设置"]').click();
+ assert.equal(await page.evaluate(()=>window.__nk.state),'paused');
+ assert.equal(await page.evaluate(()=>window.__nk.controls.touch.throttle),0);
+ assert.equal(await page.evaluate(()=>window.__nk.race.player.kart.reverseHoldTime),0);
+ await page.keyboard.up('s');
+ await page.evaluate(()=>window.__nk.ui.onResume());
+ // Restart verifies cached geometry survives disposal of the previous race.
+ await page.evaluate(()=>{const g=window.__nk;g.rig.mode='chase';g.startRace({...g.ui.choice,mode:1,bots:7});g.advance(480,1/60,false);g.advance(1)});
+ assert.equal(await page.evaluate(()=>window.__nk.race.racers.length),8);
+ await page.screenshot({path:'checks/u9-versus.png',timeout:120000});
+ await page.setViewportSize({width:844,height:390});await page.evaluate(()=>window.__nk.advance(1));
+ await page.screenshot({path:'checks/u9-mobile.png',timeout:120000});
+ const checkLayout=async()=>{
+ const layout=await page.evaluate(()=>['.steering-pad','.drive-pedal','.drive-brake','.speedo','.race-tools'].map(s=>{const r=document.querySelector(s).getBoundingClientRect();return {s,x:r.x,y:r.y,w:r.width,h:r.height,inside:r.x>=0&&r.y>=0&&r.right<=innerWidth&&r.bottom<=innerHeight}}));
+ assert.ok(layout.every(x=>x.inside),JSON.stringify(layout));
+ const brake=layout.find(x=>x.s==='.drive-brake'),pedal=layout.find(x=>x.s==='.drive-pedal'),steering=layout[0];
+ assert.ok(brake.x+brake.w<=pedal.x && Math.abs(brake.y+brake.h/2-pedal.y-pedal.h/2)<1,JSON.stringify(layout));
+ assert.ok(steering.x+steering.w<=brake.x,JSON.stringify(layout));
+ return layout;
+ };
+ const layout=await checkLayout();
+ const left=await page.locator('.drive-left').boundingBox(); const pedal=await page.locator('.drive-pedal').boundingBox();
+ const cdp=await page.context().newCDPSession(page);
+ await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:left.x+left.width/2,y:left.y+left.height/2,id:1},{x:pedal.x+pedal.width/2,y:pedal.y+pedal.height/2,id:2}]});
+ assert.deepEqual(await page.evaluate(()=>({steer:window.__nk.controls.touch.steer,throttle:window.__nk.controls.touch.throttle})),{steer:-1,throttle:1});
+ await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+ assert.equal(await page.evaluate(()=>window.__nk.controls.touch.throttle),0);
+ await cdp.detach();
+ await page.setViewportSize({width:390,height:844});await page.evaluate(()=>window.__nk.advance(1));
+ await checkLayout();
+ await page.screenshot({path:'checks/u9-portrait.png',timeout:120000});
+ await page.setViewportSize({width:320,height:640});await page.evaluate(()=>window.__nk.advance(1,1/60,false));await checkLayout();
+ console.log('LAYOUT',JSON.stringify(layout));
+ await page.addInitScript(()=>localStorage.setItem('nk-settings',JSON.stringify({quality:0,volume:0,showFps:false,camera:'chase'})));
+ const modelRequests=[];page.on('request',r=>{if(r.url().endsWith('.glb'))modelRequests.push(r.url())});
+ await page.goto(`${origin}/?track=nordschleife&manual&nogfx`,{waitUntil:'domcontentloaded'});
+ await page.waitForFunction(()=>window.__nk,{timeout:180000});
+ await page.evaluate(()=>{const g=window.__nk;g.startRace({...g.ui.choice,mode:2});g.advance(480,1/60,false);g.advance(1)});
+ assert.equal(await page.evaluate(()=>window.__nk.race.player.model.wheels.length),4);
+ assert.ok(modelRequests.some(x=>x.endsWith('u9x-lod.glb')));
+ assert.ok(!modelRequests.some(x=>x.endsWith('/u9x.glb')));
+ console.log('PASS: Nordschleife low-quality loads only LOD; multi-touch steering and throttle release correctly.');
+ assert.deepEqual(errors,[]);
+ console.log('PASS: model, acceleration, braking, two-second reverse, 5 km/h cap, removed nitro/drift, camera, pause, restart, eight-car race and aligned mobile pedals.');
+ } finally {await browser.close()}
+})().catch(e=>{console.error(e);process.exitCode=1});

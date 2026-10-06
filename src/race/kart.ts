@@ -4,38 +4,28 @@
 //
 // Kart physics, ported from Open Street Kart prefabs/car_custom_physics_2.gd.
 // OSK drives a Jolt rigid body with four raycast springs; on the web we integrate
-// the same arcade rules directly against the analytic road surface:
-//  - forward force from the forward/backward axis, BRAKE_FORCE_FACTOR / BACKWARDS_FORCE_FACTOR
-//  - yaw from the left/right axis, drift = axis * DRIFT_LEFT_RIGHT_FACTOR + DRIFT_ADDED_DIRECTION_MULTIPLIER * dir
-//  - centrifugal force cancelled (= lateral grip), 0.7 of it kept while drifting
-//  - DIRECTION_NERF_IN_AIR / FORWARD_BACKWARD_NERF_IN_AIR
-//  - quadratic "soft clamp" of the xz speed, out of bounds speed limit, SPEED_BOOST
+// driving forces, tyre grip and road contacts against the analytic surface.
 import * as THREE from "three";
-import { Track, TrackQuery } from "../track";
+import type { Track, TrackQuery } from "../track";
 
-export const DRIFT_LEFT_RIGHT_FACTOR = 1.2;
-export const DRIFT_ADDED_DIRECTION_MULTIPLIER = 1.6;
-const BRAKE_FORCE_FACTOR = 0.1;
-const BACKWARDS_FORCE_FACTOR = 0.7;
-const MIN_SPEED_FOR_BEING_BRAKE_SQUARED = 4;
+export const REVERSE_HOLD_SECONDS = 2;
+export const REVERSE_MAX_SPEED = 5 / 3.6;
+const STOP_SPEED = 0.05;
 const DIRECTION_NERF_IN_AIR = 0.1;
 const FORWARD_BACKWARD_NERF_IN_AIR = 0.1;
-export const SPEED_BOOST = 1.5;
 const GRAVITY = 9.81;
-const KART_HALF_WIDTH = 0.72;
+const KART_HALF_WIDTH = 1.06;
 
 export interface KartInput {
-  /** forward/backward axis, -1..1 */
+  /** accelerator/brake axis, -1..1; hold brake at rest to reverse */
   throttle: number;
   /** left/right axis, -1 (left) .. 1 (right) */
   steer: number;
-  drift: boolean;
 }
 
 export interface KartEvents {
   railHit: number; // impact speed (m/s) this step
   landed: number; // vertical landing speed this step
-  boostFired: boolean;
 }
 
 export class Kart {
@@ -56,11 +46,8 @@ export class Kart {
   accel = 11;
   aLatMax = 17;
 
-  drifting = false;
-  driftDir = 0;
-  driftTime = 0;
-  boostUntil = -1;
-  now = 0;
+  reverseHoldTime = 0;
+  private reverseEngaged = false;
   goingBackwards = false;
   offTrack = false;
   /** total signed distance driven along the loop since spawn (lap progress) */
@@ -68,24 +55,16 @@ export class Kart {
   private lastS = 0;
   /** last respawn point passed (OSK TrackCheckpoint): distance along the lap */
   checkpointS = 0;
-  readonly events: KartEvents = { railHit: 0, landed: 0, boostFired: false };
+  readonly events: KartEvents = { railHit: 0, landed: 0 };
   /** spin-out timer (air bomb) */
   spin = 0;
   frozen = false;
 
   constructor(readonly track: Track) {}
 
-  isBoosting() {
-    return this.now < this.boostUntil;
-  }
-
-  applySpeedBoost(seconds: number) {
-    this.boostUntil = Math.max(this.boostUntil, this.now + seconds);
-    this.events.boostFired = true;
-  }
-
-  clearSpeedBoost() {
-    this.boostUntil = -1;
+  resetBrakeHold() {
+    this.reverseHoldTime = 0;
+    this.reverseEngaged = false;
   }
 
   get speed() {
@@ -109,9 +88,8 @@ export class Kart {
     this.heading = Math.atan2(f.tx, -f.tz);
     this.vel.set(0, 0, 0);
     this.yawRate = 0;
-    this.drifting = false;
-    this.driftDir = 0;
-    this.driftTime = 0;
+    this.resetBrakeHold();
+    this.goingBackwards = false;
     this.grounded = true;
     this.spin = 0;
     this.lastS = this.q.s;
@@ -124,7 +102,6 @@ export class Kart {
   respawn() {
     const base = this.progress - this.track.deltaS(this.checkpointS, this.q.s);
     this.placeAt(this.checkpointS, 0, base);
-    this.clearSpeedBoost();
   }
 
   private surfaceNormal(out: THREE.Vector3) {
@@ -152,11 +129,9 @@ export class Kart {
   }
 
   step(dt: number, input: KartInput) {
-    this.now += dt;
     this.events.railHit = 0;
     this.events.landed = 0;
-    this.events.boostFired = false;
-    if (this.frozen) return;
+    if (this.frozen) { this.resetBrakeHold(); return; }
     const tr = this.track;
     const sinH = Math.sin(this.heading);
     const cosH = Math.cos(this.heading);
@@ -181,40 +156,21 @@ export class Kart {
       fb = 0;
       lr = 0;
     }
-    let braking = false;
-    if (fb < 0) {
-      const goingForward = vF > 0.1;
-      const goingFast = vF * vF > MIN_SPEED_FOR_BEING_BRAKE_SQUARED;
-      if (goingForward && goingFast) {
-        braking = true;
-        this.goingBackwards = false;
-      } else {
-        fb *= BACKWARDS_FORCE_FACTOR;
-        this.goingBackwards = true;
-      }
-    } else {
-      this.goingBackwards = vF < -0.5;
+    // Braking to a stop never counts towards the two-second reverse hold.
+    // Releasing the pedal disengages reverse; another press first stops the car.
+    const brakeHeld = fb < -0.05;
+    if (!brakeHeld || !onGround) this.resetBrakeHold();
+    let holdStill = false;
+    if (brakeHeld && onGround && !this.reverseEngaged) {
+      if (Math.hypot(vF, vR) <= STOP_SPEED) {
+        vF = vR = 0;
+        this.reverseHoldTime = Math.min(REVERSE_HOLD_SECONDS, this.reverseHoldTime + dt);
+        this.reverseEngaged = this.reverseHoldTime >= REVERSE_HOLD_SECONDS - 1e-9;
+        holdStill = !this.reverseEngaged;
+      } else this.reverseHoldTime = 0;
     }
-
-    // ---- drift (OSK: needs turning, not already drifting, on ground)
-    if (input.drift && Math.abs(lr) > 0.2 && this.driftDir === 0 && onGround && vF > 6) {
-      this.drifting = true;
-      this.driftDir = Math.sign(lr);
-      this.driftTime = 0;
-    }
-    if ((!input.drift || vF < 4) && this.drifting) {
-      // releasing a long drift gives a short mini-turbo (blue sparks -> orange sparks)
-      if (!input.drift && onGround) {
-        if (this.driftTime > 2.0) this.applySpeedBoost(1.1);
-        else if (this.driftTime > 1.0) this.applySpeedBoost(0.6);
-      }
-      this.endDrift();
-    }
-    if (this.drifting) {
-      this.driftTime += dt;
-      // OSK: left_right = left_right * 1.2 + 1.6 * dir  (normalised to our yaw scale)
-      lr = (lr * DRIFT_LEFT_RIGHT_FACTOR + DRIFT_ADDED_DIRECTION_MULTIPLIER * this.driftDir) / (DRIFT_LEFT_RIGHT_FACTOR + DRIFT_ADDED_DIRECTION_MULTIPLIER);
-    }
+    const braking = brakeHeld && !this.reverseEngaged;
+    const brakingReverse = fb > 0 && vF < -STOP_SPEED;
     if (!onGround) {
       lr *= DIRECTION_NERF_IN_AIR;
       fb *= FORWARD_BACKWARD_NERF_IN_AIR;
@@ -222,15 +178,12 @@ export class Kart {
 
     // ---- longitudinal
     let aF = 0;
-    if (braking) {
-      // OSK brakes with 10% of the engine force on a light kart; at Nordschleife speeds
-      // that would never stop, so the factor scales the much larger brake decel instead.
-      aF -= 26 * Math.min(1, -input.throttle) * (BRAKE_FORCE_FACTOR / 0.1) * (onGround ? 1 : 0.1);
+    if (braking || brakingReverse) {
+      aF -= Math.sign(vF) * 26 * Math.min(1, Math.abs(input.throttle)) * (onGround ? 1 : 0.1);
     } else {
       const powerFade = fb > 0 ? Math.max(0.15, 1 - (Math.max(0, vF) / (this.maxSpeed * 1.05)) ** 2) : 1;
-      aF += fb * this.accel * powerFade;
+      aF += fb * (this.reverseEngaged ? 2.5 : this.accel) * powerFade;
     }
-    if (this.isBoosting() && onGround) aF += this.accel * 2 * (1 - Math.min(1, vF / (this.maxSpeed * SPEED_BOOST)));
     // rolling resistance + air drag
     aF -= Math.sign(vF) * (0.25 + 0.00045 * vF * vF) * (onGround ? 1 : 0.4);
     if (this.offTrack && onGround) aF -= Math.sign(vF) * 2.2;
@@ -244,16 +197,20 @@ export class Kart {
       vR += (gx * rx + gz * rz) * dt;
     }
     if (onGround && Math.abs(vF) < 0.3 && fb === 0) vF *= 0.9;
+    const previousVF = vF;
     vF += aF * dt;
+    if ((braking || brakingReverse) && previousVF * vF <= 0) vF = 0;
+    if (braking && onGround) vR = Math.sign(vR) * Math.max(0, Math.abs(vR) - 26 * Math.abs(input.throttle) * dt);
+    // Static brakes resist gravity while waiting, including on banked slopes.
+    if (holdStill) vF = vR = 0;
 
     // ---- yaw (OSK: torque from left_right; we drive the yaw rate directly)
     const speedAbs = Math.abs(vF);
     const lowSpeed = Math.min(1, speedAbs / 4);
-    let yawMax = Math.min(2.4, this.aLatMax / Math.max(speedAbs, 3)) * lowSpeed;
-    if (this.drifting) yawMax *= 1.42;
+    const yawMax = Math.min(2.4, this.aLatMax / Math.max(speedAbs, 3)) * lowSpeed;
     const dirSign = vF >= 0 ? 1 : -1;
     const targetYaw = lr * yawMax * dirSign;
-    const yawResp = onGround ? (this.drifting ? 5 : 9) : 1.2;
+    const yawResp = onGround ? 9 : 1.2;
     this.yawRate += (targetYaw - this.yawRate) * (1 - Math.exp(-dt * yawResp));
     if (this.spin > 0) {
       this.spin -= dt;
@@ -271,18 +228,18 @@ export class Kart {
     let vF2 = vx * nfx + vz * nfz;
     let vR2 = vx * nrx + vz * nrz;
 
-    // ---- lateral grip (OSK _cancel_inertia: counter the centrifugal force, 70% of it while drifting)
-    const grip = !onGround ? 0.25 : this.drifting ? 2.4 : this.offTrack ? 5.5 : 11;
+    // ---- lateral tyre grip
+    const grip = !onGround ? 0.25 : this.offTrack ? 5.5 : 11;
     vR2 *= Math.exp(-grip * dt);
 
     // ---- soft clamp of the xz speed (OSK _soft_clamp_speed: smooth, never a hard stop)
-    let vmax: number;
-    if (this.goingBackwards) vmax = this.outOfBoundsSpeed * 0.6;
-    else if (this.offTrack && !this.isBoosting()) vmax = this.outOfBoundsSpeed;
-    else if (this.isBoosting()) vmax = this.maxSpeed * SPEED_BOOST;
-    else vmax = this.maxSpeed;
+    this.goingBackwards = this.reverseEngaged || vF2 < -STOP_SPEED;
+    const vmax = this.offTrack ? this.outOfBoundsSpeed : this.maxSpeed;
     const sp = Math.hypot(vF2, vR2);
-    if (sp > vmax && onGround) {
+    if (this.goingBackwards && sp > REVERSE_MAX_SPEED) {
+      vF2 *= REVERSE_MAX_SPEED / sp;
+      vR2 *= REVERSE_MAX_SPEED / sp;
+    } else if (sp > vmax && onGround) {
       const excess = Math.min(sp * 0.5, sp - vmax);
       const k = Math.max(0, sp - excess * 2.6 * dt) / sp;
       vF2 *= k;
@@ -337,12 +294,6 @@ export class Kart {
     if (tr.deltaS(this.checkpointS, cp) > 0 && Math.abs(this.q.lat) < this.q.half) this.checkpointS = cp;
   }
 
-  endDrift() {
-    this.drifting = false;
-    this.driftDir = 0;
-    this.driftTime = 0;
-  }
-
   private collideRails() {
     const tr = this.track;
     const q = this.q;
@@ -377,7 +328,6 @@ export class Kart {
       while (d < -Math.PI) d += 2 * Math.PI;
       if (Math.abs(d) < Math.PI / 2) this.heading += d * Math.min(0.5, vOut * 0.04);
       this.yawRate *= 0.5;
-      if (this.drifting && vOut > 3) this.endDrift();
     }
   }
 }

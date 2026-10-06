@@ -22,17 +22,89 @@ npm run preview
 
 `dist/` 是纯静态文件，可直接部署到任意静态托管（资源使用相对路径）。
 
+## Cloudflare 无服务器部署
+
+当前版本包含仰望 U9 Xtreme 车型、参考图样式 HUD 和停车长按刹车倒车操作。
+通过以下两个 Cloudflare 入口提供游戏：
+
+- Pages 游戏地址：https://racing-wangxingweiwxw.pages.dev/
+- Worker 入口：https://racing-wangxingweiwxw.wangxingweiwxw.workers.dev/
+- Worker 健康检查：`/api/health`（仅检查 Worker 自身，不代表 Pages 源站状态）
+
+Pages 托管 `dist/` 的游戏、地图和贴图，Worker 将 GET/HEAD 请求转发到固定的
+Pages 源站。游戏逻辑在浏览器执行，成绩和设置保存在当前域名的 localStorage 中；
+两个域名的本地存档相互独立。建议日常使用同一个入口。
+
+首次在新电脑部署时：
+
+```bash
+npm ci
+npx wrangler@4.147.0 login
+npm run deploy
+```
+
+`npm run deploy` 会运行车辆与 Worker 测试、构建游戏、发布 Pages，最后发布 Worker。
+也可分别执行 `npm run deploy:pages` 和 `npm run deploy:worker`。
+`wrangler.jsonc` 配置独立 Worker；Pages 使用命令中的项目名称和 `dist` 输出目录，
+因此 Pages 提示忽略这个 Worker 配置文件是预期行为。
+
+项目使用 Pages Direct Upload，GitHub push 不会自动更新 Cloudflare；更新后需要重新执行
+`npm run deploy`。原有 GitHub Pages workflow 仍保留。部署到其他 Cloudflare 账号时，
+先创建自己的 Pages 项目，再同步修改部署命令中的项目名和 `PAGES_ORIGIN`。
+Wrangler 4.147.0 创建 Pages 项目时可能自动改用 Workers；若明确需要独立 Pages 项目，
+创建命令为 `npx wrangler@4.147.0 pages project create <项目名> --production-branch main --force`。
+已有 Pages 项目的日常部署无需该参数。
+
+依赖锁文件已使用公共 npm registry，保留原锁定版本及完整性校验。
+Cloudflare 凭据由 Wrangler 保存在本机，不应提交到仓库。
+
 ## 玩法
+
+### 仰望 U9 Xtreme 车型与界面
+
+默认车型已替换为 `gd_yangwang_u9` 中的 U9 Xtreme：保留原车身、尾翼、驾驶舱、
+轮毂和灯组，使用 `red_met` 纯红涂装，重新映射碳纤维、玻璃与车漆材质。
+四轮随车速旋转，前轮随转向偏转，刹车灯随减速增强；追尾/远景/车头镜头和碰撞尺寸均已适配。
+驾驶仍采用项目原有的街机物理与速度档位，不代表实车性能或神力科莎物理模拟。
+
+比赛界面采用左上排名和计时、右上圆形地图、中央底部数字车速与速度条。
+右下刹车采用灰色三横槽踏板，与右侧油门水平并排；转向、油门、刹车支持鼠标及多点触控。
+车速归零后连续按住刹车 2 秒进入 R 挡，继续按住倒车，最高 5 km/h；松开或暂停重置计时，
+踩油门可恢复前进。支持 S / 下方向键、手柄 LT 和屏幕刹车，踏板下方显示长按进度。
+已移除氮气、喷火、漂移和漂移奖励加速；对手赛保留空投炸弹，点击底部道具槽或按 E 使用。
+暂停、切后台、丢失指针捕获会释放控制输入。
+
+模型产物在 `public/models/u9x/`：玩家高精度模型 `u9x.glb`（374,034 三角形），
+AI 与流畅画质使用 `u9x-lod.glb`（47,243 三角形）；几何和纹理在车辆间共享。
+低画质只加载 LOD 文件，普通/高画质额外加载玩家高精度模型。
+
+重新转换模型（原始 MOD 保留在本机并已被 Git 忽略）：
+
+```bash
+python -m pip install "git+https://github.com/semiloker/assetto-corsa-gltf.git@9ab1438113c0a1c655ba44f99ace1b048a2d3bb5"
+python tools/build_car.py
+npm run build
+npm run test:car
+```
+
+`test:car` 需要支持直接运行 TypeScript 的 Node.js 22.18+。
+浏览器集成检查：安装 Playwright 与 Edge 后运行 `node tools/check-u9.cjs`；
+可通过 `PLAYWRIGHT_MODULE` 指定已有 Playwright 模块路径，检查时先在 5173 端口启动开发服务器。
+检查覆盖加速、刹车、停车长按倒车、5 km/h 限速、输入释放、相机切换、暂停、重新开赛、八车同场及手机踏板布局，截图写入 `checks/`。
+物理测试还覆盖 30/60/120 Hz、坡道停车、计时中断、前进恢复及道具生成。
+
+模型署名为 GeroDa74 / ACTK；模型与贴图不属于本项目 MPL-2.0 或 OSK 素材的 CC BY-SA 授权，
+详见 `public/models/u9x/NOTICE.txt`。原 MOD 说明禁止公开分享，公开分发前需具备相应授权。
 
 | 项目 | 内容 |
 | --- | --- |
-| 模式 | 对手赛（Versus，3/5/7 个 AI）、计时赛（Against Clock，3 次氮气 + 幽灵车）、自由驾驶 |
+| 模式 | 对手赛（Versus，3/5/7 个 AI）、计时赛（Against Clock，幽灵车）、自由驾驶 |
 | 速度档位 | OSK 的 Chill / Casual / Challenging / Crazy：90 / 108 / 126 / 144 km/h |
 | 赛段 | 北环：全圈（T13 → T13），或四个分段：Hatzenbach、Adenauer Forst、Bergwerk、Hohe Acht 起点；上海：1 / 3 / 5 圈赛（HUD 显示圈数，结算显示单圈用时） |
-| 道具 | 氮气加速（+50% 极速 2.5 s）、空投炸弹（16 m 爆炸半径）；落后越多补给越快 |
-| 其他 | 漂移与小涡轮、每 250 m 检查点、按路段 / 弯角分段计时（北环 42 段、上海 15 段）、个人最佳与路段对比、小地图、海拔剖面进度条 |
+| 道具 | 空投炸弹（16 m 爆炸半径）；落后越多补给越快 |
+| 其他 | 每 250 m 检查点、按路段 / 弯角分段计时（北环 42 段、上海 15 段）、个人最佳与路段对比、小地图、海拔剖面进度条 |
 
-操作：W/S 或方向键油门刹车，A/D 转向，空格/Shift 漂移，E 道具，R 回到检查点，C 切换视角，Q 回看，Esc 暂停，M 静音。支持标准手柄与触屏。
+操作：W/S 或方向键油门刹车，停车后持续刹车 2 秒倒车，A/D 转向，E 道具，R 回到检查点，C 切换视角，Q 回看，Esc 暂停，M 静音。支持标准手柄与触屏。
 
 ## 从 OSK 移植了什么
 
@@ -40,9 +112,9 @@ OSK 是 Godot 4.6 桌面工程，依赖 Terrain3D、Debug Draw 3D 等原生扩�
 
 | OSK 源文件 | 本项目 |
 | --- | --- |
-| `prefabs/car_custom_physics_2.gd` | `src/race/kart.ts`：油门/刹车/倒车系数、漂移转向公式、离心力抵消、空中操控削弱、软限速、越界限速、速度提升 |
+| `prefabs/car_custom_physics_2.gd` | `src/race/kart.ts`：油门/刹车、停车长按倒车、轮胎侧向抓地、空中操控削弱、前进软限速、倒车硬限速、越界限速 |
 | `scripts/track_state.gd`, `prefabs/player_spawner.gd` | `src/race/race.ts`：速度档位表、模式、发车格、倒计时、实时排名、比赛结束 |
-| `scripts/player_item_slots_state.gd`, `prefabs/items/air_bomb.gd` | `src/race/items.ts`：三格道具槽、补给时间、加权随机、空投炸弹 |
+| `scripts/player_item_slots_state.gd`, `prefabs/items/air_bomb.gd` | `src/race/items.ts`：三格道具槽、补给时间、空投炸弹 |
 | `prefabs/ai/race_path*`, BotBrain | `src/race/brain.ts`：沿赛车线行驶的 AI |
 | `prefabs/track_checkpoint.gd` | `Kart.checkpointS` / `respawn()` |
 | `scripts/osm_data_generator.gd`, `prefabs/map_data_loader.gd` | `tools/build_data.py` + `src/world/*`：OSM → 道路、建筑、地表纹理绘制 |

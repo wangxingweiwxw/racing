@@ -12,6 +12,14 @@ Art
   https://creativecommons.org/licenses/by-sa/4.0/
   Modified: resized; asphalt cropped to remove lane markings and mirrored to tile.
 
+Vehicle
+  Yangwang U9 Xtreme: user-supplied gd_yangwang_u9 Assetto Corsa mod.
+  Original model: GeroDa74, V1.20.1. LODs: ACTK.
+  Converted to GLB with assetto-corsa-gltf 1.0.0 (MIT), semiloker.
+  https://github.com/semiloker/assetto-corsa-gltf
+  Vehicle assets retain their original ownership and redistribution restrictions;
+  see models/u9x/NOTICE.txt. They are not covered by the code or OSK art licences.
+
 Map data
   (c) OpenStreetMap contributors, ODbL 1.0 — https://www.openstreetmap.org/copyright
   Nordschleife: OSM relation 38566, fetched with the Overpass API.

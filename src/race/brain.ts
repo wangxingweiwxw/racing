@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 //
 // Car brains (OSK ACarBrain / UserBrain / BotBrain): turn input or the race path
-// into the forward/backward + left/right axes and the drift / item buttons.
+// into the forward/backward + left/right axes and the item button.
 import { Kart, KartInput } from "./kart";
 import { Track } from "../track";
 
@@ -15,7 +15,8 @@ export interface Brain {
 
 export class Controls {
   keys = new Set<string>();
-  touch = { steer: 0, throttle: 0, brake: 0, drift: false, item: false };
+  touch = { steer: 0, throttle: 0, brake: 0, item: false };
+  onBrakeRelease: () => void = () => {};
   private pressed = new Set<string>();
 
   constructor() {
@@ -24,8 +25,11 @@ export class Controls {
       this.keys.add(e.code);
       this.pressed.add(e.code);
     });
-    addEventListener("keyup", (e) => this.keys.delete(e.code));
-    addEventListener("blur", () => this.keys.clear());
+    addEventListener("keyup", (e) => {
+      this.keys.delete(e.code);
+      if (e.code === "KeyS" || e.code === "ArrowDown") this.onBrakeRelease();
+    });
+    addEventListener("blur", () => { this.keys.clear(); this.onBrakeRelease(); });
   }
 
   /** true once per key press */
@@ -47,7 +51,7 @@ export class Controls {
 }
 
 export class UserBrain implements Brain {
-  input: KartInput = { throttle: 0, steer: 0, drift: false };
+  input: KartInput = { throttle: 0, steer: 0 };
   useItem = false;
   private steerSmoothed = 0;
   private padItemLatch = false;
@@ -58,7 +62,6 @@ export class UserBrain implements Brain {
     const k = this.c.keys;
     let thr = (k.has("KeyW") || k.has("ArrowUp") ? 1 : 0) - (k.has("KeyS") || k.has("ArrowDown") ? 1 : 0);
     let steerRaw = (k.has("KeyD") || k.has("ArrowRight") ? 1 : 0) - (k.has("KeyA") || k.has("ArrowLeft") ? 1 : 0);
-    let drift = k.has("Space") || k.has("ShiftLeft") || k.has("ShiftRight");
     let item = this.c.consume("KeyE") || this.c.consume("ControlLeft") || this.c.consume("KeyF");
     const pad = this.c.gamepad();
     if (pad) {
@@ -68,7 +71,6 @@ export class UserBrain implements Brain {
       const lt = pad.buttons[6]?.value ?? 0;
       if (rt > 0.05 || lt > 0.05) thr = rt - lt;
       if (pad.buttons[0]?.pressed) thr = Math.max(thr, 1);
-      if (pad.buttons[1]?.pressed || pad.buttons[5]?.pressed || pad.buttons[4]?.pressed) drift = true;
       const pi = !!pad.buttons[2]?.pressed || !!pad.buttons[3]?.pressed;
       if (pi && !this.padItemLatch) item = true;
       this.padItemLatch = pi;
@@ -76,7 +78,6 @@ export class UserBrain implements Brain {
     const t = this.c.touch;
     if (t.throttle || t.brake) thr = t.throttle - t.brake;
     if (t.steer) steerRaw = t.steer;
-    if (t.drift) drift = true;
     if (t.item) {
       item = true;
       t.item = false;
@@ -86,14 +87,13 @@ export class UserBrain implements Brain {
     this.steerSmoothed += (steerRaw - this.steerSmoothed) * (1 - Math.exp(-dt * rate));
     this.input.throttle = thr;
     this.input.steer = Math.abs(steerRaw) < 1 && pad ? steerRaw : this.steerSmoothed;
-    this.input.drift = drift;
     this.useItem = item;
   }
 }
 
 /** OSK BotBrain: follow the race path. Here the path is the precomputed racing line. */
 export class BotBrain implements Brain {
-  input: KartInput = { throttle: 0, steer: 0, drift: false };
+  input: KartInput = { throttle: 0, steer: 0 };
   useItem = false;
   /** precomputed target speed per sample */
   private vTarget: Float32Array;
@@ -152,20 +152,14 @@ export class BotBrain implements Brain {
       this.input.throttle = fs > 3 ? -1 : fs < -1 ? 1 : 0.6;
       this.input.steer = d > 0 ? 1 : -1;
     }
-    this.input.drift = false;
-    // items: boost on straights, bombs when someone is close ahead (decided by the race)
+    // Bombs when someone is close ahead (decided by the race).
     this.itemCooldown -= dt;
     this.useItem = false;
   }
 
-  wantsItem(kind: "boost" | "bomb", kart: Kart, targetAhead: boolean): boolean {
-    if (this.itemCooldown > 0) return false;
-    let ok = false;
-    if (kind === "boost") {
-      const ahead = this.track.wrap(kart.q.i + 60);
-      ok = Math.abs(this.track.lineCurv[kart.q.i]) < 0.004 && Math.abs(this.track.lineCurv[ahead]) < 0.004 && kart.speed > kart.maxSpeed * 0.7;
-    } else ok = targetAhead;
-    if (ok) this.itemCooldown = 3 + Math.random() * 5;
-    return ok;
+  wantsItem(targetAhead: boolean): boolean {
+    if (this.itemCooldown > 0 || !targetAhead) return false;
+    this.itemCooldown = 3 + Math.random() * 5;
+    return true;
   }
 }

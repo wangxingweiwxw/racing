@@ -8,7 +8,6 @@ import * as THREE from "three";
 export enum SlotItem {
   DISABLED,
   EMPTY,
-  SPEED_BOOST,
   AIR_BOMB,
 }
 
@@ -65,17 +64,13 @@ export class PlayerItemSlotsState {
   now = 0;
   private slots: Slot[] = [];
 
-  constructor(private maxSpeed: number, private mode: GameMode, private random: () => number = Math.random) {
+  constructor(private maxSpeed: number, private mode: GameMode) {
     for (let i = 0; i < SLOTS_COUNT; i++) {
       const s = new Slot(this);
       this.slots.push(s);
       if (i === 0 && mode === GameMode.VERSUS) {
         s.setType(SlotItem.EMPTY);
         s.lifetime = MIN_REFILL_TIME_SECONDS;
-      }
-      if (mode === GameMode.AGAINST_CLOCK) {
-        s.setType(SlotItem.SPEED_BOOST);
-        s.infinite = true;
       }
     }
   }
@@ -88,7 +83,7 @@ export class PlayerItemSlotsState {
   }
 
   /** returns the item used this tick (EMPTY when none) */
-  tick(dt: number, distanceToFirst: number, useItem: boolean, rank: number): SlotItem {
+  tick(dt: number, distanceToFirst: number, useItem: boolean): SlotItem {
     this.now += dt;
     if (useItem && !this.slots[0].isDisabledOrEmpty()) return this.consumeFirst();
     const norm = distanceToFirst / this.maxSpeed;
@@ -104,7 +99,7 @@ export class PlayerItemSlotsState {
         }
       }
       if (s.getType() === SlotItem.EMPTY && s.timeIsUp()) {
-        s.setType(this.pickRandom(norm, rank));
+        s.setType(SlotItem.AIR_BOMB);
         s.lifetime = ITEM_LIFETIME_SECONDS;
       }
       if (!s.isDisabledOrEmpty() && s.timeIsUp()) {
@@ -113,20 +108,6 @@ export class PlayerItemSlotsState {
       }
     }
     return SlotItem.EMPTY;
-  }
-
-  private pickRandom(d: number, rank: number): SlotItem {
-    const weights: [SlotItem, number][] = [
-      [SlotItem.SPEED_BOOST, rank + d],
-      [SlotItem.AIR_BOMB, 2 * rank + 0.2 * d],
-    ];
-    const sum = weights.reduce((a, [, w]) => a + w, 0);
-    let r = this.random() * sum;
-    for (const [item, w] of weights) {
-      if (r < w) return item;
-      r -= w;
-    }
-    return weights[weights.length - 1][0];
   }
 
   display(): SlotDisplay[] {

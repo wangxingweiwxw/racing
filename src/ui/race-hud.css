@@ -1,0 +1,92 @@
+/* U9 Xtreme race cockpit, arranged around the road like the supplied reference. */
+#hud { --u: clamp(.65px, .075vw, 1.15px); color: #f7fbff; font-family: 'Barlow Condensed', 'Arial Narrow', sans-serif; text-shadow: 0 2px 7px #0009; }
+#hud .race-vignette { position: absolute; inset: 0; background: linear-gradient(180deg,#04111a35,transparent 28%,transparent 72%,#02091050); }
+#hud button { font: inherit; color: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: none; }
+#hud button:focus-visible { outline: 2px solid #75e4ff; outline-offset: 5px; }
+#hud svg { display: block; width: 100%; height: 100%; }
+#hud .hud-tl { left: max(calc(26 * var(--u)),env(safe-area-inset-left)); top: max(calc(18 * var(--u)),env(safe-area-inset-top)); display: flex; flex-direction: column; align-items: flex-start; gap: 0; }
+#hud .pos { padding: 0; gap: 4px; position: relative; height: calc(75 * var(--u)); }
+#hud .pos .p { font-size: calc(82 * var(--u)); color: white; font-weight: 800; letter-spacing: -3px; }
+#hud .pos .of { font-size: calc(42 * var(--u)); color: #ffffffbd; font-style: italic; }
+#hud .rank-caption { font-size: 10px; letter-spacing: .2em; margin-left: 12px; color: #e3efffa0; }
+#hud .standings { display: block; min-width: 0; width: calc(282 * var(--u)); padding: 7px 0; font-size: calc(24 * var(--u)); }
+#hud .standings .r { height: calc(32 * var(--u)); padding: 0 10px 0 0; margin: 2px 0; gap: 9px; background: linear-gradient(90deg,#030b16a1,#030b1638); }
+#hud .standings .r.me { color: #fff; background: linear-gradient(90deg,#009fea6b,#05142332); }
+#hud .rank-num { width: calc(37 * var(--u)); align-self: stretch; display: grid; place-items: center; font-weight: 700; }
+#hud .r.me .rank-num { background: #00aaff; box-shadow: 0 0 15px #009dff55; }
+#hud .standings .dot { display: none; }
+#hud .standings .gap { font-size: calc(19 * var(--u)); color: #f1f7ffca; }
+#hud .timer { display: flex; gap: 7px; align-items: center; padding: 2px 0; min-width: 0; }
+#hud .timer .t { font-size: calc(34 * var(--u)); font-variant-numeric: tabular-nums; letter-spacing: .02em; }
+#hud .timer-icon { width: calc(27 * var(--u)); height: calc(27 * var(--u)); }
+#hud .timing-detail { display: flex; gap: 9px; font-size: calc(15 * var(--u)); color: #c8d5e5; padding-top: 6px; }
+#hud .hud-tc { top: max(calc(28 * var(--u)),env(safe-area-inset-top)); }
+#hud .sector { padding: 0; font-size: calc(22 * var(--u)); font-style: normal; font-weight: 600; letter-spacing: .05em; color: #f4f9ffe0; }
+#hud .sector small { font-family: inherit; font-size: max(10px,calc(13 * var(--u))); color: #d8eaffaa; margin-bottom: 5px; letter-spacing: .12em; }
+#hud .hud-tr { top: max(calc(24 * var(--u)),env(safe-area-inset-top)); right: calc(88 * var(--u)); gap: 4px; align-items: center; }
+#hud .minimap { width: calc(185 * var(--u)); height: calc(185 * var(--u)); padding: 10px; border: 1px solid #ffffff32; border-radius: 50%; background: radial-gradient(circle,#0b1a2c38,#0c172955); box-shadow: inset 0 0 30px #09182a22; }
+#hud .race-progress { align-self: flex-end; font-size: calc(24 * var(--u)); font-weight: 600; margin-right: 12px; }
+#hud .race-tools { position: absolute; top: max(calc(23 * var(--u)),env(safe-area-inset-top)); right: max(calc(22 * var(--u)),env(safe-area-inset-right)); display: grid; gap: calc(24 * var(--u)); }
+#hud .hud-tool { width: calc(48 * var(--u)); height: calc(48 * var(--u)); min-width: 36px; min-height: 36px; padding: 9px; background: #0d1b2c77; border: 1px solid #ffffff15; border-radius: 14px; pointer-events: auto; }
+#hud .hud-tool:hover { background: #208dc577; }
+#hud .vehicle-badge { position: absolute; left: calc(30 * var(--u)); bottom: calc(242 * var(--u)); display: flex; align-items: baseline; gap: 8px; opacity: .8; }
+#hud .vehicle-badge span { font-size: calc(11 * var(--u)); letter-spacing: .17em; }
+#hud .vehicle-badge b { font-size: calc(25 * var(--u)); font-style: italic; }
+#hud .vehicle-badge small { font-size: calc(9 * var(--u)); letter-spacing: .16em; color: #b9d9ed; }
+#hud .hud-br { right: auto; left: 50%; bottom: max(calc(28 * var(--u)),env(safe-area-inset-bottom)); transform: translateX(-50%); }
+#hud .speedo { width: calc(400 * var(--u)); height: auto; min-height: calc(102 * var(--u)); padding: 0 16px 8px; transform: none; border-radius: 2px; border: 0; border-top: 1px solid #a4cae34d; background: linear-gradient(110deg,#060c1588,#060e19d9 50%,#06102066); clip-path: polygon(7% 0,93% 0,100% 100%,0 100%); box-shadow: none; }
+#hud .speedo canvas { position: static; display: block; width: 100%; height: calc(32 * var(--u)); }
+#hud .speedo-readout { display: flex; align-items: baseline; justify-content: center; gap: calc(10 * var(--u)); }
+#hud .speedo .v { position: static; transform: none; font-size: calc(64 * var(--u)); font-weight: 700; font-style: italic; letter-spacing: 1px; line-height: .94; color: white; text-shadow: 0 0 18px #2bacff5e; }
+#hud .speedo .u { position: static; transform: none; font-size: calc(16 * var(--u)); color: #ffffffa0; letter-spacing: 0; }
+#hud .gear { font: 500 calc(25 * var(--u))/1 'Barlow Condensed',sans-serif; border: 1px solid #ffffff69; border-radius: 4px; padding: 2px 5px; margin-left: 10px; }
+#hud .slots { padding: 0; gap: 3px; border: 0; margin-right: 12px; align-self: center; }
+#hud .slot { width: calc(15 * var(--u)); height: calc(30 * var(--u)); border: 0; border-radius: 3px; background: #b4cede22; overflow: hidden; }
+#hud .slot img { width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 0 4px #14bcff); }
+#hud .slot .fill { height: 2px; }
+#hud .slot.first { background: #009dff55; box-shadow: 0 0 10px #00aaff55; }
+#hud .slot.disabled { opacity: .3; }
+#hud .telemetry { display: flex; justify-content: center; gap: 18px; margin-top: 7px; font-size: max(9px,calc(11 * var(--u))); color: #c3d7ea8a; }
+#hud .speedo .alt, #hud .speedo .grade { position: static; transform: none; font-size: calc(11 * var(--u)); color: #c3d7ea7d; }
+#hud .profile { display: none; }
+#hud .hint { bottom: calc(8 * var(--u)); left: 50%; right: auto; transform: translateX(-50%); font-size: 10px; white-space: nowrap; color: #e4f2ff8a; }
+#hud .pedal-pair { position: absolute; right: max(calc(26 * var(--u)),env(safe-area-inset-right)); bottom: max(calc(43 * var(--u)),env(safe-area-inset-bottom)); display: flex; align-items: center; gap: calc(20 * var(--u)); }
+#hud .pedal-pair .drive-control { position: relative; width: calc(132 * var(--u)); height: calc(132 * var(--u)); min-width: 44px; min-height: 44px; padding: calc(27 * var(--u)); }
+#hud .drive-pedal svg { transform: rotate(25deg); }
+#hud .pedal-pair .drive-brake { background: transparent; border-color: transparent; box-shadow: none; padding: calc(16 * var(--u)); }
+#hud .pedal-pair .drive-brake.active { background: #bcd6e51a; }
+#hud .drive-brake::after { content: ""; position: absolute; bottom: 6%; left: 20%; width: 60%; height: 3px; border-radius: 2px; background: linear-gradient(90deg,#8be4ff var(--hold,0%),transparent var(--hold,0%)); }
+#hud .reverse-status { min-height: 14px; margin-top: 4px; text-align: center; color: #b8e9ff; font-size: 11px; }
+#hud .slots { pointer-events: auto; background: transparent; }
+#hud .touch { z-index: 1; }
+#hud .steering-pad { position: absolute; left: max(calc(28 * var(--u)),env(safe-area-inset-left)); bottom: max(calc(32 * var(--u)),env(safe-area-inset-bottom)); width: calc(260 * var(--u)); height: calc(180 * var(--u)); border: 1px solid #ffffff60; border-radius: 50%; background: radial-gradient(ellipse,#ffffff03,#eff8ff12); box-shadow: inset 0 0 0 4px #ffffff0c; display: flex; overflow: hidden; }
+#hud .drive-control { pointer-events: auto; border-radius: 50%; border: 1px solid #ffffff42; background: #d8eeff0d; padding: 25%; display: grid; place-items: center; box-shadow: inset 0 0 25px #d9efff08; transition: background .1s; }
+#hud .drive-control.active { background: #1aa9e660; box-shadow: inset 0 0 25px #57d5ff45; }
+#hud .drive-left, #hud .drive-right { width: 50%; height: 100%; border: none; padding: 0; border-radius: 0; background: transparent; }
+#hud .drive-left svg, #hud .drive-right svg { min-width: calc(50 * var(--u)); height: calc(65 * var(--u)); stroke-width: 8; }
+#hud .toast { top: 20%; border: 1px solid #72d9ff55; background: #081a2caf; color: #d8f5ff; border-radius: 3px; }
+#hud .center-msg { top: 30%; font-size: clamp(60px,12vw,150px); color: white; font-weight: 800; text-shadow: 0 0 30px #00baff66,0 6px 30px #0008; }
+#hud #fps { position: absolute; left: 50%; bottom: calc(148 * var(--u)); transform: translateX(-50%); font-size: 12px; color: #bcecff; }
+@media (max-height: 540px) and (orientation: landscape) {
+  #hud { --u: .65px; }
+  #hud .timing-detail, #hud .rank-caption, #hud .vehicle-badge, #hud .hint { display: none; }
+  #hud .hud-tl { top: 12px; }
+  #hud .hud-tc { top: 16px; }
+  #hud .hud-br { bottom: 10px; }
+  #hud .hud-tr { top: 12px; }
+}
+@media (max-width: 600px) and (orientation: portrait) {
+  #hud { --u: .7px; }
+  #hud .hud-tc { top: 215px; width: 90%; }
+  #hud .sector { white-space: normal; font-size: 15px; }
+  #hud .hud-tr { right: 55px; top: 22px; }
+  #hud .minimap { width: 112px; height: 112px; padding: 3px; }
+  #hud .standings { width: 174px; font-size: 15px; }
+  #hud .rank-caption, #hud .vehicle-badge, #hud .hint, #hud .timing-detail { display: none; }
+  #hud .hud-br { bottom: max(12px,env(safe-area-inset-bottom)); }
+  #hud .steering-pad { bottom: 118px; left: 12px; width: min(38vw,156px); height: 115px; }
+  #hud .pedal-pair { bottom: 130px; right: max(12px,env(safe-area-inset-right)); gap: 6px; }
+  #hud .pedal-pair .drive-control { width: min(23vw,88px); height: min(23vw,88px); padding: 17px; }
+  #hud .pedal-pair .drive-brake { padding: 9px; }
+  #hud .race-tools { gap: 20px; right: 10px; }
+}

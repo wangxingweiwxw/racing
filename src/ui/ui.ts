@@ -1,6 +1,8 @@
 // DOM user interface: OSK gui/screens (home, pick mode, pick speed, pick track,
 // credits), race HUD and race finished GUI, rebuilt as a responsive web UI.
 import "./style.css";
+import "./race-hud.css";
+import { icon } from "./icons";
 import { Track } from "../track";
 import { Course, PLAYER_COLORS, Race, Racer, SpeedMode, TRACK_SPEED } from "../race/race";
 import { GameMode, SlotItem } from "../race/items";
@@ -31,7 +33,7 @@ export function fmtTime(t: number, digits = 3): string {
 
 const modeInfo = (info: TrackInfo): { mode: GameMode; t: string; d: string }[] => [
   { mode: GameMode.VERSUS, t: "对手赛", d: "与 AI 车手同场竞速，道具槽按落后距离补给（OSK Versus）" },
-  { mode: GameMode.AGAINST_CLOCK, t: "计时赛", d: "三次氮气加速，挑战个人最佳并与幽灵车对抗（OSK Against Clock）" },
+  { mode: GameMode.AGAINST_CLOCK, t: "计时赛", d: "挑战个人最佳并与幽灵车对抗（OSK Against Clock）" },
   { mode: GameMode.FREE, t: "自由驾驶", d: info.freeModeDesc },
 ];
 const SPEED_INFO: { speed: SpeedMode; t: string }[] = [
@@ -76,6 +78,8 @@ export class UI {
   onQuit: () => void = () => {};
   onSettings: (s: Settings) => void = () => {};
   touchHost!: HTMLElement;
+  onUseItem: () => void = () => {};
+  onCamera: () => void = () => {};
 
   constructor(private info: TrackInfo, private settings: Settings) {
     this.buildLoading();
@@ -135,8 +139,8 @@ export class UI {
       h(
         "div",
         { class: "title-block" },
-        h("div", { class: "kicker" }, info.kicker),
-        h("div", { class: "brand" }, h("span", { class: "b1" }, info.brand[0]), h("span", { class: "b2" }, info.brand[1])),
+        h("div", { class: "kicker" }, "YANGWANG PERFORMANCE · " + info.label),
+        h("div", { class: "brand" }, h("span", { class: "b1" }, "仰望 U9"), h("span", { class: "b2" }, "XTREME")),
         h("p", { class: "tagline" }, info.tagline),
         h(
           "div",
@@ -171,7 +175,7 @@ export class UI {
         h("button", { class: "btn", onclick: () => this.openSettings("title") }, "设置", h("span", { class: "k" }, "")),
         h("button", { class: "btn", onclick: () => this.show("credits") }, "致谢与许可", h("span", { class: "k" }, "")),
       ),
-      h("div", { class: "foot" }, "地图数据 © OpenStreetMap contributors (ODbL) · 高程 AWS Terrain Tiles · 玩法与素材移植自 Open Street Kart (MPL-2.0 / CC BY-SA 4.0)"),
+      h("div", { class: "foot" }, "U9 Xtreme 模型 © GeroDa74 / ACTK · 地图 © OpenStreetMap contributors · 玩法与场景素材 Open Street Kart"),
     );
     this.root.append(title);
     this.screens.title = title;
@@ -334,7 +338,6 @@ export class UI {
           row("油门", "W", "↑"),
           row("刹车 / 倒车", "S", "↓"),
           row("转向", "A", "D"),
-          row("漂移（转向时按住）", "Space", "Shift"),
           row("使用道具", "E", "F"),
           row("回到检查点", "R"),
           row("切换视角", "C"),
@@ -342,7 +345,7 @@ export class UI {
           row("暂停", "Esc", "P"),
           row("静音", "M"),
           row("手柄：油门 / 刹车", "RT", "LT"),
-          row("手柄：漂移 / 道具", "B", "X"),
+          row("手柄：道具", "X"),
         ),
         h(
           "div",
@@ -350,9 +353,9 @@ export class UI {
           h("h3", {}, "玩法"),
           "沿赛道行驶，越过终点线即完成赛段或比赛。驶出沥青后会被限速（OSK 的越界速度），撞护栏会损失速度。",
           h("br"),
-          "漂移：转向时按住漂移键，车尾滑出，火花由蓝变橙后松开可获得短暂加速。",
+          "倒车：车速归零后持续按住刹车 2 秒进入 R 挡，继续按住即可倒车，最高 5 km/h。松开刹车会重置计时，踩油门可恢复前进。",
           h("br"),
-          "道具（对手赛）：落后越多补给越快；氮气提升 50% 极速 2.5 秒；空投炸弹抛向前方，16 m 范围内的车会被掀起。",
+          "道具（对手赛）：落后越多补给越快；空投炸弹抛向前方，16 m 范围内的车会被掀起。",
           h("br"),
           this.info.helpTips,
         ),
@@ -378,9 +381,11 @@ export class UI {
             html: `
 <h3>Open Street Kart</h3>
 本游戏的玩法与代码移植自 <a href="https://github.com/Picorims/open-street-kart" target="_blank" rel="noopener">Open Street Kart</a>
-（© 2025-2026 Charly Schmidt aka Picorims 与贡献者，MPL-2.0）：卡丁车物理、漂移、速度档位、检查点与重生、道具槽、空投炸弹、比赛状态与排名、相机、OSM 数据生成流程。移植后的源文件同样以 MPL-2.0 发布。
+（© 2025-2026 Charly Schmidt aka Picorims 与贡献者，MPL-2.0）：卡丁车物理、速度档位、检查点与重生、道具槽、空投炸弹、比赛状态与排名、相机、OSM 数据生成流程。移植后的源文件同样以 MPL-2.0 发布。
 <h3>美术素材</h3>
 沥青、草地、森林地面、田地、岩石、灌木、墙面材质与道具图标来自 Open Street Kart，© Picorims，<a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noopener">CC BY-SA 4.0</a>（已缩放；沥青裁去城市标线后镜像拼接）。
+<h3>仰望 U9 Xtreme</h3>
+车型来自用户提供的 gd_yangwang_u9 MOD，原作者 GeroDa74，LOD 制作 ACTK。使用 assetto-corsa-gltf 转换，适配网页车漆、灯组与车轮动画。模型及贴图权利归原作者，不适用本项目的代码或 OSK 素材许可。
 <h3>地图数据</h3>
 ${this.info.creditsMap}
 <h3>高程</h3>
@@ -492,51 +497,45 @@ Three.js、Vite、TypeScript。声音由 Web Audio 实时合成，未使用音�
 
   // ------------------------------------------------------------------ HUD
   private buildHud() {
-    const slots = h("div", { class: "slots hud-card", id: "slots" });
-    for (let i = 0; i < 3; i++) slots.append(h("div", { class: "slot disabled" }, h("img", { alt: "" }), h("div", { class: "fill" }), i === 0 ? h("span", { class: "key" }, "E") : null));
-    this.mapCanvas = h("canvas", { width: 400, height: 400 }) as HTMLCanvasElement;
+    const slots = h("button", { class: "slots", id: "slots", "aria-label": "使用空投炸弹", title: "使用空投炸弹 · E", onclick: () => this.onUseItem() });
+    for (let i = 0; i < 3; i++) slots.append(h("div", { class: "slot disabled" }, h("img", { alt: "" }), h("div", { class: "fill" })));
+    this.mapCanvas = h("canvas", { width: 400, height: 400, "aria-label": "赛道地图" }) as HTMLCanvasElement;
     this.profCanvas = h("canvas", { width: 1100, height: 140 }) as HTMLCanvasElement;
-    this.speedCanvas = h("canvas", { width: 420, height: 300 }) as HTMLCanvasElement;
-    this.hud = h(
-      "div",
-      { id: "hud", class: "hidden" },
-      h(
-        "div",
-        { class: "hud-tl" },
-        h("div", { class: "pos hud-card", id: "pos-card" }, h("span", { class: "p", id: "pos" }, "1"), h("span", { class: "of", id: "pos-of" }, "/8")),
-        h(
-          "div",
-          { class: "timer hud-card" },
-          h("div", { class: "lbl" }, "时间"),
-          h("div", { class: "t", id: "time" }, "0:00.000"),
-          h("div", { class: "row" }, h("span", {}, "最佳"), h("span", { id: "best" }, "--")),
-          h("div", { class: "row" }, h("span", {}, "分段"), h("span", { id: "delta", class: "delta" }, "")),
-        ),
-      ),
-      h("div", { class: "hud-tc" }, h("div", { class: "sector hud-card" }, h("small", { id: "remain" }, ""), h("span", { id: "sector" }, ""))),
-      h("div", { class: "hud-tr" }, h("div", { class: "minimap hud-card" }, this.mapCanvas), h("div", { class: "standings hud-card", id: "standings" })),
-      h("div", { class: "hud-bl" }, slots),
-      h("div", { class: "profile hud-card" }, this.profCanvas),
-      h(
-        "div",
-        { class: "hud-br" },
-        h("div", { class: "speedo hud-card" }, this.speedCanvas, h("div", { class: "v", id: "speed" }, "0"), h("div", { class: "u" }, "KM/H"), h("div", { class: "alt", id: "alt" }, ""), h("div", { class: "grade", id: "grade" }, "")),
-      ),
-      h("div", { class: "hint", id: "hint" }, "W/S 油门刹车 · A/D 转向 · 空格 漂移 · E 道具 · R 检查点 · C 视角 · Esc 暂停"),
-      h("div", { class: "center-msg", id: "center" }, ""),
-      h("div", { class: "toast hud-card hidden", id: "toast" }, ""),
+    this.speedCanvas = h("canvas", { width: 800, height: 80 }) as HTMLCanvasElement;
+    this.hud = h("div", { id: "hud", class: "hidden" },
+      h("div", { class: "race-vignette" }),
+      h("div", { class: "hud-tl" },
+        h("div", { class: "pos", id: "pos-card" }, h("span", { class: "p", id: "pos" }, "1"), h("span", { class: "of", id: "pos-of" }, "/8"), h("span", { class: "rank-caption" }, "POSITION")),
+        h("div", { class: "standings", id: "standings" }),
+        h("div", { class: "timer" }, h("span", { class: "timer-icon", html: icon("timer") }), h("span", { class: "t", id: "time" }, "0:00.000")),
+        h("div", { class: "timing-detail" }, h("span", {}, "BEST "), h("span", { id: "best" }, "--"), h("span", { id: "delta", class: "delta" }))),
+      h("div", { class: "hud-tc" }, h("div", { class: "sector" }, h("small", { id: "remain" }), h("span", { id: "sector" }))),
+      h("div", { class: "hud-tr" }, h("div", { class: "minimap" }, this.mapCanvas), h("div", { class: "race-progress", id: "race-progress" }, "0%")),
+      h("div", { class: "race-tools" },
+        h("button", { class: "hud-tool", "aria-label": "暂停与设置", title: "暂停 · Esc", onclick: () => this.onPause(), html: icon("settings") }),
+        h("button", { class: "hud-tool", "aria-label": "切换视角", title: "切换视角 · C", onclick: () => this.onCamera(), html: icon("camera") }),
+        h("button", { class: "hud-tool", "aria-label": "回到检查点", title: "回到检查点 · R", onclick: () => this.onRespawn(), html: icon("reset") })),
+      h("div", { class: "vehicle-badge" }, h("span", {}, "YANGWANG"), h("b", {}, "U9 X"), h("small", {}, "XTREME")),
+      h("div", { class: "hud-br" },
+        h("div", { class: "speedo" }, this.speedCanvas,
+          h("div", { class: "speedo-readout" }, slots, h("span", { class: "v", id: "speed" }, "000"), h("span", { class: "u" }, "km/h"), h("span", { class: "gear", id: "gear" }, "D")),
+          h("div", { class: "reverse-status", id: "reverse-status", "aria-live": "polite" }),
+          h("div", { class: "telemetry" }, h("span", { id: "alt" }), h("span", { id: "grade" })))),
+      h("div", { class: "profile" }, this.profCanvas),
+      h("div", { class: "hint", id: "hint" }, "W 加速  ·  S 刹车 / 停稳长按 2 秒倒车  ·  A / D 转向"),
+      h("div", { class: "center-msg", id: "center" }),
+      h("div", { class: "toast hidden", id: "toast" }),
       h("div", { class: "warn hidden", id: "warn" }, "逆行！按 R 回到检查点"),
-      h("div", { class: "lbl", id: "fps", style: "position:absolute;left:18px;top:120px;" }, ""),
-    );
+      h("div", { id: "fps" }));
     this.root.append(this.hud);
-    for (const id of ["pos", "pos-of", "pos-card", "time", "best", "delta", "sector", "remain", "standings", "speed", "alt", "grade", "center", "toast", "warn", "slots", "fps", "hint"]) this.els[id] = this.hud.querySelector(`#${id}`)!;
-    this.hud.append(h("button", { class: "pause-btn hud-card", "aria-label": "暂停", onclick: () => this.onPause() }, "❚❚"));
-    this.touchHost = h("div", { class: "touch hidden" });
+    for (const id of ["pos", "pos-of", "pos-card", "time", "best", "delta", "sector", "remain", "standings", "speed", "alt", "grade", "center", "toast", "warn", "slots", "fps", "hint", "gear", "race-progress", "reverse-status"]) this.els[id] = this.hud.querySelector(`#${id}`)!;
+    this.touchHost = h("div", { class: "touch" });
     this.hud.append(this.touchHost);
   }
 
   showHud(v: boolean) {
     this.hud.classList.toggle("hidden", !v);
+    if (!v) this.touchHost.dispatchEvent(new Event("resetcontrols"));
   }
 
   prepareHud(race: Race) {
@@ -547,7 +546,7 @@ Three.js、Vite、TypeScript。声音由 Web Audio 实时合成，未使用音�
     const versus = race.opts.mode === GameMode.VERSUS;
     this.els["pos-card"].classList.toggle("hidden", !versus);
     this.els.standings.classList.toggle("hidden", !versus);
-    this.els.slots.classList.toggle("hidden", race.opts.mode === GameMode.FREE);
+    this.els.slots.classList.toggle("hidden", !versus);
     const best = race.bestTime();
     this.els.best.textContent = best > 0 ? fmtTime(best) : "--";
     this.els.delta.textContent = "";
@@ -709,27 +708,32 @@ Three.js、Vite、TypeScript。声音由 Web Audio 实时合成，未使用音�
     this.els.remain.textContent = `${lap}剩余 ${(remain / 1000).toFixed(2)} km · ${camLabel}`;
     // speed
     const kmh = Math.round(k.speed * 3.6);
-    this.els.speed.textContent = String(kmh);
+    this.els.speed.textContent = String(kmh).padStart(3, "0");
+    this.els.gear.textContent = k.goingBackwards ? "R" : "D";
+    this.els["race-progress"].textContent = `${Math.round(Math.max(0, Math.min(1, k.progress / co.distance)) * 100)}%`;
     this.els.alt.textContent = `海拔 ${Math.round(k.pos.y)} m`;
     const gi = tr.wrap(k.q.i + 5);
     const gj = tr.wrap(k.q.i - 5);
     const grade = ((tr.y[gi] - tr.y[gj]) / (10 * tr.step)) * 100;
     this.els.grade.textContent = `坡度 ${grade >= 0 ? "+" : ""}${grade.toFixed(0)}%`;
-    this.drawSpeedo(k.speed, k.maxSpeed, k.isBoosting(), k.drifting ? k.driftTime : 0);
+    this.drawSpeedo(k.speed, k.maxSpeed);
+    this.els["reverse-status"].textContent = k.goingBackwards ? "R · 倒车限速 5 km/h" : k.reverseHoldTime > 0 ? "保持刹车 · 2 秒后倒车" : "";
+    const brake = this.touchHost.querySelector<HTMLElement>(".drive-brake");
+    brake?.style.setProperty("--hold", `${Math.min(1, k.reverseHoldTime / 2) * 100}%`);
     // standings
     this.standT -= dt;
     if (race.opts.mode === GameMode.VERSUS && this.standT <= 0) {
       this.standT = 0.25;
       const lead = st[0].kart.progress;
       this.els.standings.replaceChildren(
-        ...st.map((r, i) =>
+        ...st.filter((r, i) => i === 0 || r.isPlayer || i === Math.max(1, st.indexOf(p) - 1)).slice(0, 3).map((r) =>
           h(
             "div",
             { class: `r ${r.isPlayer ? "me" : ""}` },
-            h("span", {}, String(i + 1)),
+            h("span", { class: "rank-num" }, String(st.indexOf(r) + 1)),
             h("span", { class: "dot", style: `background:#${r.look.color.toString(16).padStart(6, "0")}` }),
             h("span", {}, r.name),
-            h("span", { class: "gap" }, r.finishTime >= 0 ? fmtTime(r.finishTime, 1) : i === 0 ? "领先" : `−${Math.round(lead - r.kart.progress)} m`),
+            h("span", { class: "gap" }, r.finishTime >= 0 ? fmtTime(r.finishTime, 1) : st.indexOf(r) === 0 ? "领先" : `−${Math.round(lead - r.kart.progress)} m`),
           ),
         ),
       );
@@ -737,13 +741,14 @@ Three.js、Vite、TypeScript。声音由 Web Audio 实时合成，未使用音�
     // item slots
     if (p.slots) {
       const disp = p.slots.display();
+      (this.els.slots as HTMLButtonElement).disabled = disp[0]?.item !== SlotItem.AIR_BOMB;
       const slotEls = this.els.slots.children;
       disp.forEach((d, i) => {
         const el = slotEls[i] as HTMLElement;
         el.classList.toggle("disabled", d.item === SlotItem.DISABLED);
-        el.classList.toggle("first", i === 0 && (d.item === SlotItem.SPEED_BOOST || d.item === SlotItem.AIR_BOMB));
+        el.classList.toggle("first", i === 0 && (d.item === SlotItem.AIR_BOMB));
         const img = el.querySelector("img") as HTMLImageElement;
-        const src = d.item === SlotItem.SPEED_BOOST ? `${BASE}textures/item_slot_speed_boost.png` : d.item === SlotItem.AIR_BOMB ? `${BASE}textures/item_slot_air_bomb.png` : "";
+        const src = d.item === SlotItem.AIR_BOMB ? `${BASE}textures/item_slot_air_bomb.png` : "";
         if (img.getAttribute("src") !== src) {
           if (src) img.setAttribute("src", src);
           else img.removeAttribute("src");
@@ -778,46 +783,19 @@ Three.js、Vite、TypeScript。声音由 Web Audio 实时合成，未使用音�
     }
   }
 
-  private drawSpeedo(v: number, vmax: number, boost: boolean, drift: number) {
+  private drawSpeedo(v: number, vmax: number) {
     const c = this.speedCanvas;
     const ctx = c.getContext("2d")!;
     ctx.clearRect(0, 0, c.width, c.height);
-    const cx = c.width / 2;
-    const cy = 200;
-    const r = 160;
-    const a0 = Math.PI * 0.8;
-    const a1 = Math.PI * 2.2;
-    const frac = Math.min(1, v / (vmax * 1.5));
-    ctx.lineCap = "round";
-    ctx.lineWidth = 16;
-    ctx.strokeStyle = "rgba(255,255,255,0.1)";
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, a0, a1);
-    ctx.stroke();
-    // limit mark
-    const lim = a0 + (a1 - a0) * (1 / 1.5);
-    ctx.strokeStyle = "rgba(255,255,255,0.45)";
-    ctx.lineWidth = 4;
-    ctx.beginPath();
-    ctx.moveTo(cx + Math.cos(lim) * (r - 16), cy + Math.sin(lim) * (r - 16));
-    ctx.lineTo(cx + Math.cos(lim) * (r + 14), cy + Math.sin(lim) * (r + 14));
-    ctx.stroke();
-    const g = ctx.createLinearGradient(0, 0, c.width, 0);
-    g.addColorStop(0, "#3ddc84");
-    g.addColorStop(0.65, "#ffd400");
-    g.addColorStop(1, "#ff4d4f");
-    ctx.strokeStyle = boost ? "#6cb8ff" : g;
-    ctx.lineWidth = 16;
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, a0, a0 + (a1 - a0) * frac);
-    ctx.stroke();
-    if (drift > 0) {
-      ctx.strokeStyle = drift > 2 ? "#ff8a3d" : drift > 1 ? "#ffd400" : "#6cb8ff";
-      ctx.lineWidth = 6;
-      ctx.beginPath();
-      ctx.arc(cx, cy, r - 24, a0, a0 + (a1 - a0) * Math.min(1, drift / 2));
-      ctx.stroke();
+    const amount = Math.min(1, v / vmax);
+    for (let i = 0; i < 24; i++) {
+      const x = 24 + i * 31;
+      const active = i / 24 < amount;
+      ctx.fillStyle = active ? "#30c7ff" : "rgba(200,224,246,0.13)";
+      ctx.shadowColor = "#00b7ff"; ctx.shadowBlur = active ? 14 : 0;
+      ctx.beginPath(); ctx.moveTo(x + 9, 20); ctx.lineTo(x + 35, 20); ctx.lineTo(x + 25, 45); ctx.lineTo(x, 45); ctx.closePath(); ctx.fill();
     }
+    ctx.shadowBlur = 0;
   }
 
   private drawMap(race: Race) {
@@ -833,9 +811,12 @@ Three.js、Vite、TypeScript。声音由 Web Audio 实时合成，未使用音�
       ctx.strokeStyle = r.isPlayer ? "#fff" : "rgba(0,0,0,0.7)";
       ctx.lineWidth = r.isPlayer ? 4 : 2;
       ctx.beginPath();
-      ctx.arc(x, y, r.isPlayer ? 10 : 7, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
+      if (r.isPlayer) {
+        ctx.save(); ctx.translate(x, y); ctx.rotate(r.kart.heading);
+        ctx.fillStyle = "#27c8ff"; ctx.shadowColor = "#00baff"; ctx.shadowBlur = 14;
+        ctx.moveTo(0, -17); ctx.lineTo(11, 13); ctx.lineTo(0, 7); ctx.lineTo(-11, 13); ctx.closePath();
+        ctx.fill(); ctx.stroke(); ctx.restore();
+      } else { ctx.arc(x, y, 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); }
     }
     if (race.ghost) {
       const g = race.ghost.model.root.position;

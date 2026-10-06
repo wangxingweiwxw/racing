@@ -2,3 +2,9 @@ node_modules
 dist
 data/raw/*/terrarium
 tools/__pycache__
+data/raw/terrarium
+.wrangler/
+.dev.vars*
+.env*
+checks/
+gd_yangwang_u9/

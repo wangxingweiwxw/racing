@@ -1,0 +1,11 @@
+Yangwang U9 Xtreme — web conversion of the user-supplied Assetto Corsa mod.
+Original model: GeroDa74, version V1.20.1. LOD improvements: ACTK.
+Source: gd_yangwang_u9; solid metallic-red skin: skins/red_met.
+Conversion utility: assetto-corsa-gltf 1.0.0 (MIT), semiloker.
+https://github.com/semiloker/assetto-corsa-gltf
+
+Model and texture rights remain with their respective authors. They are NOT
+covered by this repository's MPL-2.0 code license or the OSK artwork license.
+The supplied mod's ui/ui_car.json says that public sharing is prohibited.
+These files are prepared for local use. Public redistribution requires the
+appropriate authorization from the model's rights holder.
