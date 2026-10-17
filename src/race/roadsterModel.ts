@@ -77,7 +77,7 @@ export function buildRoadster(color: number, roadsterEnvironment: THREE.Texture 
         for(const j of [band,band+1])p.push(r[j][0],r[j][1],z);
         if(i<N){const a=i*2;idx.push(a,a+2,a+1,a+1,a+2,a+3);}
       }
-      surface(p,idx,paint,outer&&za===-.99?doorFor(band<3?-1:1):car,"Body shoulder band");
+      surface(p,idx,paint,outer&&za===-.99?doorFor(band<=3?-1:1):car,"Body shoulder band");
     }
   }
   for(const z of [-2.34,2.34]) {

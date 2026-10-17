@@ -125,6 +125,10 @@ test('Roadster airbrake shortens high-speed stops without changing the speed cap
 test('Roadster mesh has finite bounds, four wheels and six cold gas jets',()=>{
   const m=buildRoadster(0xc80012);
   assert.equal(m.doors.length,2);
+  for(const door of m.doors) {
+    const bounds=new THREE.Box3().setFromObject(door);
+    assert.ok(door.userData.side<0?bounds.max.x<0:bounds.min.x>0,'each hinged door must contain only its own side of the body');
+  }
   for(const actuator of m.aeroStruts) assert.equal(actuator.parent,m.car,'animated actuators must not be statically merged');
   assert.equal(m.wheels.length,4); assert.equal(m.frontPivots.length,2); assert.equal(m.rearWheelsLocal.length,2); assert.equal(m.jets.length,6);
   m.jets.forEach(j=>j.geometry.computeBoundingSphere());
