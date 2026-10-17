@@ -56,15 +56,14 @@ for (const [idx, track] of tracks.entries()) for (const vehicle of ['u9x', 'road
   });
 }
 
-test('assist preserves brake, reverse, hover, airborne and wrong-way controls', () => {
+test('assist preserves brake, reverse, ordinary jumps and wrong-way controls', () => {
   const k = car(tracks[0]); const assist = new DrivingAssist(k.track, k.maxSpeed, k.aLatMax);
   const setSpeed = v => k.vel.set(Math.sin(k.heading) * v, 0, -Math.cos(k.heading) * v);
-  for (const state of ['stopped', 'reverse', 'hover', 'airborne', 'wrong-way', 'spin']) {
+  for (const state of ['stopped', 'reverse', 'airborne', 'wrong-way', 'spin']) {
     k.placeAt(100, 0, 0); setSpeed(70);
-    const input = { throttle: .8, steer: .4, lift: state === 'hover' };
+    const input = { throttle: .8, steer: .4, lift: false };
     if (state === 'stopped') setSpeed(0);
     if (state === 'reverse') setSpeed(-1);
-    if (state === 'hover') k.flightEnabled = true;
     if (state === 'airborne') k.grounded = false;
     if (state === 'wrong-way') { k.heading += Math.PI; setSpeed(70); }
     if (state === 'spin') k.spin = 1;
@@ -72,6 +71,46 @@ test('assist preserves brake, reverse, hover, airborne and wrong-way controls', 
   }
   k.placeAt(100, 0, 0); setSpeed(70);
   const brake = { throttle: -1, steer: 0 }; assist.apply(k, brake); assert.equal(brake.throttle, -1);
+});
+
+for (const hz of [30, 60, 120]) test(`hover steering corrects outward drift during powered flight and descent at ${hz} Hz`, () => {
+  for (const tr of tracks) {
+    const index = tr.curv.reduce((best, c, i) => Math.abs(c) < Math.abs(tr.curv[best]) ? i : best, 0);
+    function fly(enabled) {
+      const k = car(tr, 'roadster', index * tr.step);
+      k.flightEnabled = true;
+      k.step(1 / hz, { throttle: 0, steer: 0, lift: true });
+      assert.equal(k.flightControlActive, true);
+      const f = tr.frameAt(index * tr.step, {});
+      const lat = f.half - k.halfWidth - .8;
+      k.pos.set(f.x - f.tz * lat, 0, f.z + f.tx * lat);
+      tr.query(k.pos.x, k.pos.z, -1, k.q);
+      k.pos.y = tr.surfaceY(k.q) + 3.5; k.grounded = false;
+      k.heading = Math.atan2(f.tx, -f.tz) + .18;
+      k.vel.set(Math.sin(k.heading) * 20, 0, -Math.cos(k.heading) * 20);
+      const assist = new DrivingAssist(tr, k.maxSpeed, k.aLatMax);
+      let poweredCorrection = false, descentCorrection = false, maxLat = lat;
+      for (let n = 0; n < hz * .8; n++) {
+        const input = { throttle: .3, steer: .3, lift: n < hz * .4 };
+        if (enabled) {
+          assist.apply(k, input);
+          assert.equal(input.throttle, .3); assert.equal(input.lift, n < hz * .4);
+          assert.equal(assist.braking, false);
+          if (input.lift) poweredCorrection ||= assist.recovering;
+          else descentCorrection ||= assist.recovering;
+        }
+        k.step(1 / hz, input);
+        maxLat = Math.max(maxLat, k.q.lat);
+        assert.equal(k.flightControlActive, true);
+        assert.ok(Number.isFinite(k.heading));
+      }
+      return { maxLat, charge: k.flightCharge, poweredCorrection, descentCorrection };
+    }
+    const manual = fly(false), assisted = fly(true);
+    assert.ok(assisted.maxLat < manual.maxLat - .5, JSON.stringify({ manual, assisted }));
+    assert.ok(assisted.poweredCorrection && assisted.descentCorrection);
+    assert.equal(assisted.charge, manual.charge);
+  }
 });
 
 test('straight-line target allows the vehicle top speed; assists have separate records', () => {

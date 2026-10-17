@@ -35,17 +35,19 @@ export class DrivingAssist {
     const i = tr.wrap(Math.floor(ahead));
     const t = ahead - Math.floor(ahead);
     this.targetSpeed = Math.min(kart.maxSpeed, this.speeds[i] * (1 - t) + this.speeds[tr.wrap(i + 1)] * t);
-    // Keep manual braking/reverse, jumps, hover and deliberate wrong-way driving intact.
+    // A hover session keeps steering help through descent. Ordinary jumps/spins do not.
+    const flying = kart.flightControlActive || (kart.flightEnabled && input.lift && kart.flightCharge >= .25 && kart.grounded);
     const alignment = Math.sin(kart.heading) * tr.tx[q.i] - Math.cos(kart.heading) * tr.tz[q.i];
-    if (!kart.grounded || (kart.flightEnabled && input.lift) || kart.forwardSpeed < 5 || kart.spin > 0 || alignment < .5) return;
+    if ((!kart.grounded && !flying) || kart.forwardSpeed < 5 || kart.spin > 0 || alignment < .5) return;
 
-    const f = tr.frameAt(q.s + v * .8, this.frame);
-    const predictedLat = (kart.pos.x + kart.vel.x * .8 - f.x) * -f.tz + (kart.pos.z + kart.vel.z * .8 - f.z) * f.tx;
+    const horizon = flying ? 1.1 : .8;
+    const f = tr.frameAt(q.s + v * horizon, this.frame);
+    const predictedLat = (kart.pos.x + kart.vel.x * horizon - f.x) * -f.tz + (kart.pos.z + kart.vel.z * horizon - f.z) * f.tx;
     const margin = Math.max(1, f.half - kart.halfWidth - .7);
     const risk = clamp((Math.abs(predictedLat) - margin + 1) / 2, 0, 1);
     if (risk > 0) {
       const want = Math.atan2(f.tx, -f.tz) - Math.atan2(q.lat * .5, Math.max(10, v));
-      const yawCapacity = Math.min(2.4, kart.aLatMax / Math.max(v, 3));
+      const yawCapacity = Math.min(2.4, kart.aLatMax / Math.max(v, 3)) * (flying ? .7 : 1);
       const recovery = clamp(angle(want - kart.heading) * 2 / yawCapacity, -1, 1);
       // Only replace input that would worsen the excursion. Inward input stays available.
       const side = Math.sign(predictedLat);
@@ -55,6 +57,8 @@ export class DrivingAssist {
       }
       this.targetSpeed *= 1 - risk * .25;
     }
+    // Air help only changes steering; the player retains throttle, brake and lift control.
+    if (flying) return;
     const excess = v - this.targetSpeed;
     if (excess > 0) {
       const pedal = -clamp(excess / 4, 0, 1);

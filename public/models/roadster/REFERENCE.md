@@ -53,7 +53,8 @@ No downloaded vehicle meshes or video textures are included.
 - Minimum 25% charge to launch; release to rearm after exhaustion.
 - Vehicle speed caps: Roadster 370.15 km/h; U9 Xtreme 496.22 km/h.
 - Optional corner assistance anticipates braking and gently corrects at road edges;
-  assisted records are separate from manual driving. Hover remains manually controlled.
+  assisted records are separate from manual driving. Steering assistance continues through
+  powered hover and descent; throttle, brakes and lift remain manually controlled.
 - Flight stays inside the existing track corridor. This is short hovering and
   driving, not unrestricted aircraft simulation or a barrel-roll recreation.
 - Separate best times, sector splits and ghosts prevent mixing flight-assisted

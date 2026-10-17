@@ -19,7 +19,7 @@ const origin = process.env.BASE_URL || 'http://127.0.0.1:5173';
     await page.locator('[data-assist="true"]').click();
     await page.locator('[data-vehicle="roadster"]').click();
     assert.equal(await page.locator('[data-vehicle="roadster"]').getAttribute('aria-pressed'),'true');
-    await page.screenshot({path:'checks/roadster-selection.png'});
+    await page.screenshot({path:'checks/roadster-selection.png',timeout:120000});
     await page.evaluate(()=>{const g=window.__nk;g.ui.choice.mode=2;g.ui.choice.color=0xf4f4f4;});
     await page.locator('#setup .primary').click();
     await page.evaluate(()=>{const g=window.__nk;g.advance(480,1/60,false);g.advance(1);});
@@ -39,8 +39,12 @@ const origin = process.env.BASE_URL || 'http://127.0.0.1:5173';
     const flying=await page.evaluate(()=>{const k=window.__nk.race.player.kart;return {height:k.flightHeight,charge:k.flightCharge,speed:k.speed,active:k.thrusterActive};});
     assert.ok(flying.height>2.7 && flying.height<4 && flying.speed>3 && flying.active,JSON.stringify(flying));
     await view(4,1.8,-6);
+    assert.match(await page.locator('#assist-status').innerText(),/空中转向辅助/);
     await page.screenshot({path:'checks/roadster-flight.png',timeout:120000});
     await page.keyboard.up('w');await page.keyboard.up('Space');
+    await page.evaluate(()=>window.__nk.advance(30));
+    assert.equal(await page.evaluate(()=>window.__nk.race.player.kart.thrusterActive),false);
+    assert.match(await page.locator('#assist-status').innerText(),/空中转向辅助/);
     await page.evaluate(()=>{const g=window.__nk;g.view(null);g.advance(240,1/60,false);});
     assert.equal(await page.evaluate(()=>window.__nk.race.player.kart.grounded),true);
     // Real pointer press, followed by pause: both controls release safely.
@@ -86,6 +90,15 @@ const origin = process.env.BASE_URL || 'http://127.0.0.1:5173';
       await page.evaluate(()=>window.__nk.advance(2));
       const layout=await page.evaluate(()=>['.drive-lift','.flight-panel','.drive-pedal','.drive-brake','.steering-pad','.speedo'].map(s=>{const r=document.querySelector(s).getBoundingClientRect();return {s,x:r.x,y:r.y,right:r.right,bottom:r.bottom,inside:r.x>=0&&r.y>=0&&r.right<=innerWidth&&r.bottom<=innerHeight};}));
       assert.ok(layout.every(r=>r.inside),JSON.stringify(layout));
+      const bottle = layout.find(r=>r.s==='.flight-panel');
+      assert.ok(bottle.right-bottle.x<=50 && bottle.bottom-bottle.y<=72,'compact bottle footprint');
+      assert.ok(bottle.right<=width*.2,'bottle must stay out of the central car view');
+      assert.equal(await page.locator('.flight-heading').isVisible(),false);
+      assert.equal(await page.locator('#flight-bottle').isVisible(),true);
+      await page.evaluate(()=>{const g=window.__nk;g.race.player.kart.flightCharge=.18;g.advance(1);});
+      assert.equal(await page.locator('#flight-bottle').getAttribute('aria-valuenow'),'18');
+      assert.equal(await page.locator('#flight-percent').innerText(),'18%');
+      assert.ok(await page.locator('#flight-panel').evaluate(el=>el.classList.contains('low')));
       for(let a=0;a<layout.length;a++)for(let b=a+1;b<layout.length;b++) {
         const x=layout[a],y=layout[b];assert.ok(x.right<=y.x||y.right<=x.x||x.bottom<=y.y||y.bottom<=x.y,`Overlap: ${JSON.stringify([x,y])}`);
       }

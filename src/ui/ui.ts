@@ -362,7 +362,7 @@ export class UI {
           h("h3", {}, "玩法"),
           "沿赛道行驶，越过终点线即完成赛段或比赛。驶出沥青后会被限速（OSK 的越界速度），撞护栏会损失速度。",
           h("br"),
-          "弯道辅助默认开启：根据前方弯道提前制动，接近路肩时轻微纠偏。你仍需控制方向，紧急时可继续踩刹车；悬浮、腾空和逆行时不介入。可在赛事设置切换手动驾驶，两种模式分开记录成绩。",
+          "弯道辅助默认开启：根据前方弯道提前制动，接近路肩时轻微纠偏。Roadster 升空后及降落途中继续辅助转向，空中油门、刹车和悬浮由你控制；普通腾空、逆行时不介入。可在赛事设置切换手动驾驶，两种模式分开记录成绩。",
           h("br"),
           "倒车：车速归零后持续按住刹车 2 秒进入 R 挡，继续按住即可倒车，最高 5 km/h。松开刹车会重置计时，踩油门可恢复前进。",
           h("br"),
@@ -530,6 +530,7 @@ Three.js、Vite、TypeScript。声音由 Web Audio 实时合成，未使用音�
         h("button", { class: "hud-tool", "aria-label": "回到检查点", title: "回到检查点 · R", onclick: () => this.onRespawn(), html: icon("reset") })),
       h("div", { class: "vehicle-badge", id: "vehicle-badge" }),
       h("div", { class: "flight-panel hidden", id: "flight-panel" },
+        h("div", { class: "flight-bottle", id: "flight-bottle", role: "progressbar", "aria-label": "悬浮推进剂余量", "aria-valuemin": "0", "aria-valuemax": "100", "aria-valuenow": "100" }, h("span", { class: "bottle-icon", html: icon("gas") }), h("span", { id: "flight-percent" }, "100%")),
         h("div", { class: "flight-heading" }, h("b", {}, "COLD GAS"), h("span", { id: "flight-state" }, "READY")),
         h("div", { class: "flight-meter", role: "progressbar", "aria-label": "推进剂余量", "aria-valuemin": "0", "aria-valuemax": "100", id: "flight-meter" }, h("i", { id: "flight-fill" })),
         h("div", { class: "flight-data" }, h("span", { id: "flight-charge" }), h("span", { id: "flight-alt" })),
@@ -548,6 +549,8 @@ Three.js、Vite、TypeScript。声音由 Web Audio 实时合成，未使用音�
       h("div", { id: "fps" }));
     this.root.append(this.hud);
     this.els["assist-status"] = this.hud.querySelector("#assist-status")!;
+    this.els["flight-bottle"] = this.hud.querySelector("#flight-bottle")!;
+    this.els["flight-percent"] = this.hud.querySelector("#flight-percent")!;
     for (const id of ["vehicle-badge", "flight-panel", "flight-state", "flight-meter", "flight-fill", "flight-charge", "flight-alt", "pos", "pos-of", "pos-card", "time", "best", "delta", "sector", "remain", "standings", "speed", "alt", "grade", "center", "toast", "warn", "slots", "fps", "hint", "gear", "race-progress", "reverse-status"]) this.els[id] = this.hud.querySelector(`#${id}`)!;
     this.touchHost = h("div", { class: "touch" });
     this.hud.append(this.touchHost);
@@ -733,7 +736,7 @@ Three.js、Vite、TypeScript。声音由 Web Audio 实时合成，未使用音�
     // speed
     const assist = race.player.brain instanceof UserBrain ? race.player.brain.assist : undefined;
     const assistStatus = this.els["assist-status"];
-    assistStatus.textContent = assist ? (!k.grounded ? "弯道辅助 · 落地后恢复" : assist.braking ? `辅助制动 · 目标 ${Math.round(assist.targetSpeed * 3.6)} km/h` : assist.recovering ? "弯道辅助 · 路肩纠偏" : "弯道辅助 · 就绪") : "手动驾驶";
+    assistStatus.textContent = assist ? (k.flightControlActive ? `空中转向辅助 · ${assist.recovering ? "纠偏" : "就绪"}` : !k.grounded ? "弯道辅助 · 落地后恢复" : assist.braking ? `辅助制动 · 目标 ${Math.round(assist.targetSpeed * 3.6)} km/h` : assist.recovering ? "弯道辅助 · 路肩纠偏" : "弯道辅助 · 就绪") : "手动驾驶";
     assistStatus.classList.toggle("active", !!assist?.braking || !!assist?.recovering);
     if (k.flightEnabled) {
       const charge = Math.round(k.flightCharge * 100);
@@ -743,6 +746,11 @@ Three.js、Vite、TypeScript。声音由 Web Audio 实时合成，未使用音�
       this.els["flight-alt"].textContent = `${k.flightHeight.toFixed(1)} m 离地`;
       this.els["flight-state"].textContent = k.thrusterActive ? "悬浮中" : !k.grounded ? "降落中" : charge < 25 ? "恢复中" : "就绪";
       this.els["flight-panel"].classList.toggle("active", k.thrusterActive);
+      this.els["flight-panel"].classList.toggle("low", charge < 25);
+      this.els["flight-panel"].style.setProperty("--fuel", String(k.flightCharge));
+      this.els["flight-percent"].textContent = `${charge}%`;
+      this.els["flight-bottle"].setAttribute("aria-valuenow", String(charge));
+      this.els["flight-bottle"].setAttribute("aria-valuetext", `${charge}% · ${this.els["flight-state"].textContent}`);
     }
     const kmh = Math.round(k.speed * 3.6);
     this.els.speed.textContent = String(kmh).padStart(3, "0");

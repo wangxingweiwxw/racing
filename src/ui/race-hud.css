@@ -6,6 +6,8 @@
 .vehicle-note a { color: #a4e5ff; margin-left: 8px; }
 #hud .flight-panel { position: absolute; left: 50%; bottom: 190px; transform: translateX(-50%); width: 230px; padding: 12px 15px; border: 1px solid #89bdd440; background: #06131cbd; border-radius: 6px; font-size: 12px; }
 #hud .flight-panel.active { border-color: #b8edff; box-shadow: 0 0 20px #8bdfff18; }
+#hud .flight-bottle { display: none; }
+#hud .gas-liquid { transform: scaleY(var(--fuel, 1)); transform-origin: center bottom; transform-box: fill-box; }
 #hud .flight-heading, #hud .flight-data { display: flex; justify-content: space-between; gap: 12px; }
 #hud .flight-heading b { letter-spacing: .16em; font-size: 10px; }
 #hud .flight-heading span { color: #bcf2ff; }
@@ -16,15 +18,22 @@
 #hud .drive-lift svg { height: 30px; }
 #hud .drive-lift span { font-size: 11px; }
 @media (max-height: 540px) and (orientation: landscape) {
-  #hud .flight-panel { bottom: 128px; width: 204px; padding: 8px 12px; }
+  #hud .flight-panel { bottom: 148px; left: max(22px,env(safe-area-inset-left)); }
   #hud .flight-panel small { display: none; }
   #hud .touch .drive-lift { bottom: 142px; right: 22px; width: 54px; height: 54px; padding: 5px; }
 }
 @media (max-width: 600px) and (orientation: portrait) {
-  #hud .flight-panel { bottom: 248px; width: 200px; }
+  #hud .flight-panel { bottom: 248px; left: max(12px,env(safe-area-inset-left)); }
   #hud .touch .drive-lift { bottom: 248px; right: 10px; width: 48px; height: 48px; padding: 4px; }
   #hud .drive-lift svg { height: 25px; }
-  #hud .flight-panel { left: 12px; transform: none; width: min(62vw,230px); }
+}
+@media (max-width: 600px), (max-height: 540px) and (orientation: landscape) {
+  #hud .flight-panel { transform: none; width: 46px; height: 68px; padding: 4px; border-radius: 10px; background: #06131c80; color: #b9eaff; }
+  #hud .flight-panel > :not(.flight-bottle) { display: none; }
+  #hud .flight-bottle { display: flex; flex-direction: column; align-items: center; gap: 1px; font-size: 10px; line-height: 14px; }
+  #hud .bottle-icon { display: block; width: 34px; height: 42px; }
+  #hud .flight-panel.low { color: #ffd382; border-color: #ffd38280; }
+  #hud .flight-panel.active .bottle-icon { filter: drop-shadow(0 0 4px #81dcff); }
 }
 #hud { --u: clamp(.65px, .075vw, 1.15px); color: #f7fbff; font-family: 'Barlow Condensed', 'Arial Narrow', sans-serif; text-shadow: 0 2px 7px #0009; }
 #hud .race-vignette { position: absolute; inset: 0; background: linear-gradient(180deg,#04111a35,transparent 28%,transparent 72%,#02091050); }

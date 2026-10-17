@@ -70,6 +70,8 @@ export class Kart {
   halfLength = 2.48;
 
   get flightHeight() { return Math.max(0, this.pos.y - this.track.surfaceY(this.q)); }
+  /** True from a powered launch through the unpowered descent, until touchdown. */
+  get flightControlActive() { return this.flightSession; }
 
   constructor(readonly track: Track) {}
 

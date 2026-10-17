@@ -1,4 +1,5 @@
 const paths: Record<string, string> = {
+  gas: '<rect class="gas-liquid" x="22" y="29" width="20" height="24" rx="4" fill="currentColor" stroke="none"/><path d="M25 5h14v8H25zM29 13v7m6-7v7M24 20h16l8 10v23a6 6 0 0 1-6 6H22a6 6 0 0 1-6-6V30Z"/>',
   lift: '<path d="m18 29 14-18 14 18M32 12v32M15 47l-4 9m21-6v9m17-12 4 9"/>',
   left: '<path d="M39 12 20 32l19 20"/>',
   right: '<path d="m25 12 19 20-19 20"/>',
