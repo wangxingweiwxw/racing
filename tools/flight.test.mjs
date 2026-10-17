@@ -13,6 +13,15 @@ const lift = { throttle: 0, steer: 0, lift: true };
 const idle = { throttle: 0, steer: 0 };
 const step = (k, seconds, input, hz=120) => { for(let i=0;i<Math.round(seconds*hz);i++) k.step(1/hz,input); };
 const car = (track=tracks[0]) => { const k=new Kart(track); k.flightEnabled=true; k.placeAt(100,0,0); return k; };
+const flatTrack = () => ({
+  N:2, step:10, length:1000, verge:10000,
+  x:new Float32Array([0,0]), z:new Float32Array([0,-10]), tx:new Float32Array([0,0]), tz:new Float32Array([-1,-1]),
+  y:new Float32Array([0,0]), bank:new Float32Array([0,0]), half:new Float32Array([10000,10000]),
+  wrap:i=>((i%2)+2)%2, wrapS:s=>((s%1000)+1000)%1000, deltaS:(a,b)=>b-a,
+  frameAt(s,out){Object.assign(out,{x:0,y:0,z:-s,tx:0,tz:-1,i:0,t:0,half:10000,bank:0});return out;},
+  query(x,z,hint,out){Object.assign(out,{i:0,t:0,s:-z,lat:0,half:10000,yc:0,bank:0});return out;},
+  surfaceY:()=>0,
+});
 
 for(const hz of [30,60,120]) for(const [i,track] of tracks.entries()) test(`hover, depletion, landing and refill at ${hz} Hz on track ${i}`,()=>{
   const k=car(track);
@@ -42,6 +51,17 @@ test('U9 ignores lift, low fuel cannot launch, and airborne steering stays finit
   assert.ok(k.speed>3); assert.ok(k.flightHeight>2); assert.ok(Number.isFinite(k.heading));
   const ground=car(); ground.pos.copy(k.pos); ground.pos.y-=3;
   assert.equal(carOverlap(k,ground),null);
+});
+
+test('U9 Xtreme and Roadster horizontal speed never exceeds their vehicle cap',()=>{
+  for (const vehicle of ['u9x','roadster']) {
+    const k=new Kart(flatTrack()); k.maxSpeed=vehicleMaxSpeedMps(vehicle); k.accel=8+k.maxSpeed*.12; k.placeAt(100,0,0);
+    for(let i=0;i<60*120;i++) {
+      k.step(1/120,{throttle:1,steer:0});
+      assert.ok(k.speed<=k.maxSpeed+1e-9,`${vehicle}: ${k.speed*3.6} km/h`);
+    }
+    assert.ok(k.speed>k.maxSpeed*.95,`${vehicle}: did not reach configured cap (${k.speed*3.6}/${k.maxSpeed*3.6} km/h)`);
+  }
 });
 
 test('Roadster mesh has finite bounds, four wheels and six cold gas jets',()=>{

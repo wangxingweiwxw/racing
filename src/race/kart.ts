@@ -207,7 +207,7 @@ export class Kart {
     if (braking || brakingReverse) {
       aF -= Math.sign(vF) * 26 * Math.min(1, Math.abs(input.throttle)) * (onGround ? 1 : 0.1);
     } else {
-      const powerFade = fb > 0 ? Math.max(0.15, 1 - (Math.max(0, vF) / (this.maxSpeed * 1.05)) ** 2) : 1;
+      const powerFade = fb > 0 ? Math.max(0.5, 1 - (Math.max(0, vF) / (this.maxSpeed * 1.05)) ** 2) : 1;
       aF += fb * (this.reverseEngaged ? 2.5 : this.accel) * powerFade;
     }
     // rolling resistance + air drag
@@ -258,16 +258,15 @@ export class Kart {
     const grip = !onGround ? (this.flightSession ? 2.5 : .25) : this.offTrack ? 5.5 : 11;
     vR2 *= Math.exp(-grip * dt);
 
-    // ---- soft clamp of the xz speed (OSK _soft_clamp_speed: smooth, never a hard stop)
+    // ---- cap horizontal speed to the selected vehicle's published top speed.
     this.goingBackwards = this.reverseEngaged || vF2 < -STOP_SPEED;
     const vmax = this.offTrack ? this.outOfBoundsSpeed : this.maxSpeed;
     const sp = Math.hypot(vF2, vR2);
     if (this.goingBackwards && sp > REVERSE_MAX_SPEED) {
       vF2 *= REVERSE_MAX_SPEED / sp;
       vR2 *= REVERSE_MAX_SPEED / sp;
-    } else if (sp > vmax && (onGround || this.flightSession)) {
-      const excess = Math.min(sp * 0.5, sp - vmax);
-      const k = Math.max(0, sp - excess * 2.6 * dt) / sp;
+    } else if (sp > vmax) {
+      const k = vmax / sp;
       vF2 *= k;
       vR2 *= k;
     }
