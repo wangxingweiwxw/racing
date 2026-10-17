@@ -37,13 +37,16 @@ const origin = process.env.BASE_URL || 'http://127.0.0.1:5178';
       await page.waitForFunction(() => window.__nk, null, {timeout:180000});
       assert.equal(await page.locator('#setup').isVisible(),true);
       const choice = await page.evaluate(() => window.__nk.ui.choice);
-      assert.equal(choice.bots,3);
+      assert.equal(choice.bots,0);
+      assert.equal(choice.mode,0);
       assert.equal(choice.course.laps,1);
       assert.equal(choice.course.startS,0);
       assert.equal(choice.color,0xf4f4f4);
       assert.equal(await page.locator('[data-paint]').count(),1);
-      assert.equal(await page.locator('#setup').getByText('单圈冲刺',{exact:true}).count(),1);
-      assert.equal(await page.locator('#setup').getByText(/^[57] 位.*AI/).count(),0);
+      assert.equal(await page.locator('#setup').getByText('单圈冲刺',{exact:true}).count(),0);
+      assert.equal(await page.locator('#setup').getByText(/对手赛|对手数量|位.*AI/).count(),0);
+      assert.equal(await page.locator('#setup').getByText('计时赛',{exact:true}).count(),1);
+      assert.equal(await page.locator('#setup').getByText('自由驾驶',{exact:true}).count(),1);
       for (const vehicle of ['u9x','roadster']) {
         await page.locator(`[data-vehicle="${vehicle}"]`).click();
         const paintNames = await page.locator('[data-paint]').allTextContents();
@@ -53,14 +56,16 @@ const origin = process.env.BASE_URL || 'http://127.0.0.1:5178';
           const result = await page.evaluate(() => {
             const g=window.__nk;
             // Engine must enforce rules even for a stale setup supplied by a restart.
-            g.startRace({...g.ui.choice,bots:7,course:{...g.ui.choice.course,laps:5,startS:500,distance:5*g.track.length}});
+            g.startRace({...g.ui.choice,mode:1,bots:7,course:{...g.ui.choice.course,laps:5,startS:500,distance:5*g.track.length}});
             const r=g.race;
             const materials = new Set();
             r.player.model.root.traverse(o => {for(const m of (Array.isArray(o.material)?o.material:[o.material]))if(m&&/EXT_carpaint|Pearl body paint/.test(m.name))materials.add(m.color.getHex());});
-            const out={count:r.racers.length,models:r.racers.map(x=>x.model.root.name),paint:r.player.look.color,materials:[...materials],course:r.opts.course,length:g.track.length};
+            const out={mode:r.opts.mode,bots:r.opts.bots,count:r.racers.length,models:r.racers.map(x=>x.model.root.name),paint:r.player.look.color,materials:[...materials],course:r.opts.course,length:g.track.length};
             g.ui.onQuit();g.ui.show('setup');return out;
           });
-          assert.equal(result.count,4);
+          assert.equal(result.count,1);
+          assert.equal(result.mode,0);
+          assert.equal(result.bots,0);
           assert.ok(result.models.every(n=>n===(vehicle==='u9x'?'Yangwang U9 Xtreme':'Tesla Roadster 2')));
           assert.deepEqual(result.materials,[result.paint]);
           assert.equal(result.course.laps,1);
@@ -72,12 +77,18 @@ const origin = process.env.BASE_URL || 'http://127.0.0.1:5178';
         await page.screenshot({path:`checks/grid-${track}-${vehicle}.png`,timeout:120000});
         await page.evaluate(() => {window.__nk.ui.onQuit();window.__nk.ui.show('setup');});
       }
+      const free = await page.evaluate(() => {
+        const g=window.__nk;g.startRace({...g.ui.choice,mode:2,bots:7});
+        const result={mode:g.race.opts.mode,count:g.race.racers.length,ghost:g.race.ghost};
+        g.ui.onQuit();g.ui.show('setup');return result;
+      });
+      assert.deepEqual(free,{mode:2,count:1,ghost:null});
       await page.setViewportSize({width:390,height:844});
       await page.screenshot({path:`checks/setup-${track}-mobile.png`});
       await page.setViewportSize({width:1280,height:900});
-      console.log(`${track}: saved settings, single lap, 3 same-model AI, all paint materials PASS`);
+      console.log(`${track}: saved settings, hidden lap option, solo modes, all paint materials PASS`);
     }
     assert.deepEqual(errors,[]);
-    fs.writeFileSync('checks/setup-result.json',JSON.stringify({result:'PASS',errors,checks:'default street, chooser mobile, both circuits, legacy saves, both vehicles, AI grid, paint materials'},null,2));
+    fs.writeFileSync('checks/setup-result.json',JSON.stringify({result:'PASS',errors,checks:'default street, chooser mobile, both circuits, legacy saves, both vehicles, solo grid, paint materials'},null,2));
   } finally { await browser.close(); }
 })().catch(e=>{console.error(e);process.exitCode=1;});

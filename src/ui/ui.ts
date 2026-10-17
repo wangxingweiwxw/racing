@@ -9,11 +9,11 @@ import { GameMode, SlotItem } from "../race/items";
 import { BASE } from "../world/assets";
 import { Settings } from "../settings";
 import { TrackInfo, TRACKS, switchTrack } from "../tracks";
-import { VEHICLES, recordSuffix, type VehicleId } from "../race/vehicles";
+import { VEHICLES, type VehicleId } from "../race/vehicles";
 import { UserBrain } from "../race/brain";
 
 import { PAINTS, PAINT_SOURCES, validPaint } from "../race/paints";
-import { RACE_BOTS } from "../race/rules";
+import { soloMode } from "../race/rules";
 
 type Attrs = Record<string, string | number | boolean | ((e: Event) => void)>;
 export function h(tag: string, attrs: Attrs = {}, ...kids: (Node | string | null | undefined | false)[]): HTMLElement {
@@ -37,7 +37,6 @@ export function fmtTime(t: number, digits = 3): string {
 }
 
 const modeInfo = (info: TrackInfo): { mode: GameMode; t: string; d: string }[] => [
-  { mode: GameMode.VERSUS, t: "对手赛", d: "与 3 位同车型 AI 车手单圈竞速，道具槽按落后距离补给（OSK Versus）" },
   { mode: GameMode.AGAINST_CLOCK, t: "计时赛", d: "挑战个人最佳并与幽灵车对抗（OSK Against Clock）" },
   { mode: GameMode.FREE, t: "自由驾驶", d: info.freeModeDesc },
 ];
@@ -90,17 +89,17 @@ export class UI {
     this.choice = {
       assist: true,
       vehicle: "u9x",
-      mode: GameMode.VERSUS,
+      mode: GameMode.AGAINST_CLOCK,
       course: courses.find((c) => c.id === this.info.defaultCourse) ?? courses[0],
       color: PAINTS.u9x[0].color,
-      bots: RACE_BOTS,
+      bots: 0,
     };
     try {
       const saved = JSON.parse(localStorage.getItem("nk-choice") || "null");
       if (saved) {
         this.choice.assist = saved.assist !== false;
         this.choice.vehicle = saved.vehicle === "roadster" ? "roadster" : "u9x";
-        this.choice.mode = saved.mode ?? this.choice.mode;
+        this.choice.mode = soloMode(saved.mode);
         this.choice.color = saved.color ?? this.choice.color;
       }
       // the course is remembered per track
@@ -231,17 +230,14 @@ export class UI {
   }
 
   // ------------------------------------------------------------------ setup (OSK pick mode / track)
-  private setupEls: { assist: HTMLElement; vehicles: HTMLElement; modes: HTMLElement; courses: HTMLElement; colors: HTMLElement; bots: HTMLElement; botsGroup: HTMLElement } | null = null;
+  private setupEls: { assist: HTMLElement; vehicles: HTMLElement; modes: HTMLElement; colors: HTMLElement } | null = null;
 
   private buildSetup(): HTMLElement {
     const vehicles = h("div", { class: "opts vehicle-options" });
     const assist = h("div", { class: "opts" });
     const modes = h("div", { class: "opts" });
-    const courses = h("div", { class: "opts" });
     const colors = h("div", { class: "swatches" });
-    const bots = h("div", { class: "opts" });
-    const botsGroup = h("div", { class: "group" }, h("label", {}, "对手数量"), bots);
-    this.setupEls = { assist, vehicles, modes, courses, colors, bots, botsGroup };
+    this.setupEls = { assist, vehicles, modes, colors };
     const s = h(
       "div",
       { class: "screen scrim hidden", id: "setup" },
@@ -256,8 +252,6 @@ export class UI {
         h("div", { class: "group" }, h("label", {}, "模式"), modes),
         h("div", { class: "group vehicle-speed-note" }, h("label", {}, "车型极速"), h("p", { class: "sub" }, "各车型使用对应最高时速；赛道驾驶表现仍受弯道、抓地力和路况影响。")),
         h("div", { class: "group" }, h("label", {}, "驾驶辅助"), assist),
-        h("div", { class: "group" }, h("label", {}, "赛程"), courses),
-        botsGroup,
         h("div", { class: "group" }, h("label", {}, "车身颜色"), colors),
         h(
           "div",
@@ -274,7 +268,8 @@ export class UI {
   private refreshSetup() {
     const e = this.setupEls!;
     const c = this.choice;
-    c.bots = RACE_BOTS;
+    c.bots = 0;
+    c.mode = soloMode(c.mode);
     c.color = validPaint(c.vehicle, c.color);
     e.assist.replaceChildren(...[true, false].map(enabled => h("button", {
       class: `opt ${c.assist === enabled ? "on" : ""}`, "data-assist": String(enabled), "aria-pressed": String(c.assist === enabled),
@@ -291,27 +286,6 @@ export class UI {
         h("button", { class: `opt ${c.mode === m.mode ? "on" : ""}`, onclick: () => ((c.mode = m.mode), this.refreshSetup()) }, h("div", { class: "t" }, m.t), h("div", { class: "d" }, m.d)),
       ),
     );
-    e.courses.replaceChildren(
-      ...this.courses.map((co) => {
-        let best = -1;
-        try {
-          best = parseFloat(localStorage.getItem(`nk-best-${co.id}${recordSuffix(c.vehicle, c.assist)}`) || "-1");
-        } catch {
-          best = -1;
-        }
-        return h(
-          "button",
-          { class: `opt ${c.course.id === co.id ? "on" : ""}`, onclick: () => ((c.course = co), this.refreshSetup()) },
-          h("div", { class: "t" }, co.name),
-          h("div", { class: "d" }, `${co.sub}`),
-          h("div", { class: "d" }, `${(co.distance / 1000).toFixed(2)} km · 最佳 ${best > 0 ? fmtTime(best, 2) : "—"}`),
-        );
-      }),
-    );
-    e.botsGroup.classList.toggle("hidden", c.mode !== GameMode.VERSUS);
-    e.bots.replaceChildren(
-      ...[RACE_BOTS].map((n) => h("button", { class: `opt ${c.bots === n ? "on" : ""}`, onclick: () => ((c.bots = n), this.refreshSetup()) }, h("div", { class: "t" }, `${n} 位同车型 AI 车手`))),
-    );
     e.colors.replaceChildren(
       ...PAINTS[c.vehicle].map(paint =>
         h("button", {
@@ -326,7 +300,8 @@ export class UI {
   }
 
   private start() {
-    this.choice.bots = RACE_BOTS;
+    this.choice.bots = 0;
+    this.choice.mode = soloMode(this.choice.mode);
     this.choice.course = this.courses[0];
     this.choice.color = validPaint(this.choice.vehicle, this.choice.color);
     try {
@@ -355,7 +330,6 @@ export class UI {
           row("油门", "W", "↑"),
           row("刹车 / 倒车", "S", "↓"),
           row("转向", "A", "D"),
-          row("使用道具", "E", "F"),
           row("Roadster 悬浮（按住）", "Space", "LB"),
           row("Roadster 展车 / 空中翻滚", "X", "B"),
           row("回到检查点", "R"),
@@ -377,8 +351,6 @@ export class UI {
           "倒车：车速归零后持续按住刹车 2 秒进入 R 挡，继续按住即可倒车，最高 5 km/h。松开刹车会重置计时，踩油门可恢复前进。",
           h("br"),
           "Roadster：按住空格 / 手柄 LB / 屏幕悬浮按钮短时升空，WASD 继续控制。松开或推进剂耗尽后自动降落；落地松开悬浮键恢复推进剂，至少 25% 才能再次起飞。X / 手柄 B / 屏幕展车按钮：停车时开合车门、展开尾翼；升空超过 1.5 米且余量至少 20% 时翻滚一次，消耗 15% 推进剂。高速制动自动展开气动尾翼，帮助缩短刹车距离。飞行与特技均为街机玩法，悬浮限制在赛道走廊内。",
-          h("br"),
-          "道具（对手赛）：落后越多补给越快；空投炸弹抛向前方，16 m 范围内的车会被掀起。",
           h("br"),
           this.info.helpTips,
         ),

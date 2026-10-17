@@ -2,6 +2,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PAINTS, validPaint } from '../src/race/paints.ts';
 import { TRACKS } from '../src/tracks.ts';
+import { soloMode } from '../src/race/rules.ts';
+import { GameMode } from '../src/race/items.ts';
+
+test('legacy versus saves become time trials while free driving stays available', () => {
+  for (const old of [GameMode.VERSUS, undefined, null, 7, '1']) {
+    assert.equal(soloMode(old), GameMode.AGAINST_CLOCK);
+  }
+  assert.equal(soloMode(GameMode.AGAINST_CLOCK), GameMode.AGAINST_CLOCK);
+  assert.equal(soloMode(GameMode.FREE), GameMode.FREE);
+});
 
 test('both circuits offer only one full lap, with a valid default', () => {
   for (const info of TRACKS) {

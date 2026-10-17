@@ -1,6 +1,10 @@
 import type { Course } from './race';
+import { GameMode } from './items.ts';
 
-export const RACE_BOTS = 3;
+/** Old versus saves and unknown values become a solo time trial. */
+export function soloMode(mode: unknown): GameMode {
+  return mode === GameMode.FREE ? GameMode.FREE : GameMode.AGAINST_CLOCK;
+}
 export function singleLapCourse(trackId: string, length: number): Course {
   return {
     id: trackId === 'shanghai' ? 'sh-1' : 'full',

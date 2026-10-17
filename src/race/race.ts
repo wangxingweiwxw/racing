@@ -16,8 +16,8 @@ import { KartLook, KartModel } from "./kartModel";
 import { GameAudio } from "../audio";
 import { recordSuffix, vehicleMaxSpeedMps, type VehicleId } from "./vehicles";
 
-import { PAINTS, validPaint } from "./paints";
-import { RACE_BOTS, singleLapCourse } from "./rules";
+import { validPaint } from "./paints";
+import { soloMode, singleLapCourse } from "./rules";
 
 const OUT_OF_BOUNDS_SPEED = 11 * 1.8;
 
@@ -53,17 +53,6 @@ export interface Racer {
   lapTimes: number[];
 }
 
-const BOT_NAMES = ["Anna", "Jonas", "Lena", "Felix", "Mia", "Lukas", "Emma"];
-const LIVERIES: KartLook[] = [
-  { color: 0x1e64c8, accent: 0x0d1b2a, helmet: 0xf0f0f0, number: 7 },
-  { color: 0xd62828, accent: 0x1b1b1b, helmet: 0xffd166, number: 11 },
-  { color: 0x2a9d8f, accent: 0x264653, helmet: 0xffffff, number: 23 },
-  { color: 0xf4a261, accent: 0x3d2c1e, helmet: 0x264653, number: 4 },
-  { color: 0x8338ec, accent: 0x1f0b3a, helmet: 0xe0e0e0, number: 19 },
-  { color: 0xffbe0b, accent: 0x222222, helmet: 0x111111, number: 31 },
-  { color: 0x06d6a0, accent: 0x073b4c, helmet: 0xef476f, number: 8 },
-  { color: 0xef476f, accent: 0x2b2d42, helmet: 0xffffff, number: 66 },
-];
 export interface RaceOptions {
   assist?: boolean;
   vehicle?: VehicleId;
@@ -115,7 +104,8 @@ export class Race {
   ) {
     opts.vehicle = opts.vehicle === "roadster" ? "roadster" : "u9x";
     opts.playerColor = validPaint(opts.vehicle, opts.playerColor);
-    opts.bots = RACE_BOTS;
+    opts.bots = 0;
+    opts.mode = soloMode(opts.mode);
     opts.course = singleLapCourse(opts.course.id.startsWith("sh-") ? "shanghai" : "nordschleife", track.length);
     this.group.name = "race";
     scene.add(this.group);
@@ -123,62 +113,41 @@ export class Race {
     scene.traverse((o) => {
       if (o.name.startsWith("start-lamp-")) this.startLamps.push(o as THREE.Mesh);
     });
-    const nBots = opts.mode === GameMode.VERSUS ? RACE_BOTS : 0;
-    // grid: OSK PlayerSpawner places karts in two columns behind the line
-    const total = nBots + 1;
-    const playerSlot = opts.mode === GameMode.VERSUS ? Math.max(0, total - 3) : 0;
-    let botIdx = 0;
-    for (let slot = 0; slot < total; slot++) {
-      const isPlayer = slot === playerSlot;
-      const row = Math.floor(slot / 2);
-      const col = slot % 2 === 0 ? -1 : 1;
-      const s = opts.course.startS - 6 - row * 8 - (col > 0 ? 3 : 0);
-      const lat = col * 2.4;
-      const kart = new Kart(track);
-      const vehicle = opts.vehicle;
-      kart.flightEnabled = vehicle === "roadster";
-      if (kart.flightEnabled) { kart.halfWidth = 1.08; kart.halfLength = 2.4; }
-      const maxSpeed = vehicleMaxSpeedMps(vehicle);
-      kart.maxSpeed = maxSpeed;
-      kart.outOfBoundsSpeed = OUT_OF_BOUNDS_SPEED;
-      kart.accel = 8 + maxSpeed * 0.12;
-      kart.placeAt(track.wrapS(s), lat, track.deltaS(opts.course.startS, track.wrapS(s)));
-      const look: KartLook = isPlayer ? { color: opts.playerColor, accent: 0x15171c, helmet: 0xf2f2f2, number: 1 } : { ...LIVERIES[(botIdx + 1) % LIVERIES.length], color: PAINTS[vehicle][(botIdx + 1) % PAINTS[vehicle].length].color };
-      const model = new KartModel(look, isPlayer, vehicle);
-      this.group.add(model.root);
-      let brain: Brain;
-      let name: string;
-      if (isPlayer) {
-        brain = new UserBrain(controls, opts.assist !== false ? new DrivingAssist(track, maxSpeed, kart.aLatMax) : undefined);
-        name = "你";
-      } else {
-        const skill = 0.86 + ((botIdx * 37) % 11) / 100;
-        brain = new BotBrain(track, maxSpeed, Math.min(1, skill), (botIdx % 3) - 1);
-        kart.maxSpeed = maxSpeed * (0.965 + skill * 0.03);
-        name = BOT_NAMES[botIdx % BOT_NAMES.length];
-        botIdx++;
-      }
-      const r: Racer = {
-        id: `kart${slot}`,
-        name,
-        kart,
-        model,
-        brain,
-        look,
-        isPlayer,
-        slots: opts.mode === GameMode.VERSUS ? new PlayerItemSlotsState(maxSpeed, opts.mode) : null,
-        finishTime: -1,
-        rank: slot + 1,
-        stuck: 0,
-        wrongWay: 0,
-        susp: { pitch: 0, roll: 0, bounce: 0, vb: 0 },
-        splits: [],
-        lastSector: -1,
-        lapTimes: [],
-      };
-      if (isPlayer) this.player = r;
-      this.racers.push(r);
-    }
+    const s = opts.course.startS - 6;
+    const lat = -2.4;
+    const kart = new Kart(track);
+    const vehicle = opts.vehicle;
+    kart.flightEnabled = vehicle === "roadster";
+    if (kart.flightEnabled) { kart.halfWidth = 1.08; kart.halfLength = 2.4; }
+    const maxSpeed = vehicleMaxSpeedMps(vehicle);
+    kart.maxSpeed = maxSpeed;
+    kart.outOfBoundsSpeed = OUT_OF_BOUNDS_SPEED;
+    kart.accel = 8 + maxSpeed * 0.12;
+    kart.placeAt(track.wrapS(s), lat, track.deltaS(opts.course.startS, track.wrapS(s)));
+    const look: KartLook = { color: opts.playerColor, accent: 0x15171c, helmet: 0xf2f2f2, number: 1 };
+    const model = new KartModel(look, true, vehicle);
+    this.group.add(model.root);
+    const brain = new UserBrain(controls, opts.assist !== false ? new DrivingAssist(track, maxSpeed, kart.aLatMax) : undefined);
+    const r: Racer = {
+      id: "kart0",
+      name: "你",
+      kart,
+      model,
+      brain,
+      look,
+      isPlayer: true,
+      slots: null,
+      finishTime: -1,
+      rank: 1,
+      stuck: 0,
+      wrongWay: 0,
+      susp: { pitch: 0, roll: 0, bounce: 0, vb: 0 },
+      splits: [],
+      lastSector: -1,
+      lapTimes: [],
+    };
+    this.player = r;
+    this.racers.push(r);
     if (opts.mode === GameMode.AGAINST_CLOCK) this.loadGhost();
     this.syncModels(0);
   }
