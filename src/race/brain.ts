@@ -16,7 +16,7 @@ export interface Brain {
 
 export class Controls {
   keys = new Set<string>();
-  touch = { steer: 0, throttle: 0, brake: 0, item: false, lift: false };
+  touch = { steer: 0, throttle: 0, brake: 0, item: false, lift: false, action: false };
   onBrakeRelease: () => void = () => {};
   private pressed = new Set<string>();
 
@@ -89,6 +89,7 @@ export class UserBrain implements Brain {
     this.steerSmoothed += (steerRaw - this.steerSmoothed) * (1 - Math.exp(-dt * rate));
     this.input.throttle = thr;
     this.input.lift = k.has("Space") || t.lift || !!pad?.buttons[4]?.pressed;
+    this.input.action = k.has("KeyX") || t.action || !!pad?.buttons[1]?.pressed;
     this.input.steer = Math.abs(steerRaw) < 1 && pad ? steerRaw : this.steerSmoothed;
     this.assist?.apply(kart, this.input);
     this.useItem = item;

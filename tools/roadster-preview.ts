@@ -21,9 +21,10 @@ ground.rotation.x=-Math.PI/2;ground.position.y=-.01;ground.receiveShadow=true;sc
 const model=new KartModel({color:0xf4f4f4,accent:0,helmet:0,number:1},true,"roadster");scene.add(model.root);
 const views:Record<string,number[]>={rear:[0,2.6,-7.5],quarter:[4.9,2.7,-6.7],side:[7.5,1.65,0],front:[4.6,2.6,6.8]};
 let flying=false;
+const pose=(showcase:boolean,airBrake=0)=>{for(let i=0;i<120;i++)model.animate(1/60,0,0,0,0,0,flying,{showcase,airBrake});renderer.render(scene,camera);};
 const render=()=>{ model.animate(0,0,0,0,0,0,flying);renderer.render(scene,camera); };
 const view=(name:string)=>{const p=views[name];camera.position.set(p[0],p[1],p[2]);camera.lookAt(0,.65,0);render();};
 document.querySelectorAll<HTMLButtonElement>("[data-view]").forEach(b=>b.onclick=()=>view(b.dataset.view!));
 document.querySelector<HTMLButtonElement>("#flight")!.onclick=()=>{flying=!flying;model.root.position.y=flying?.8:0;render();};
 view("quarter");
-Object.assign(window,{__roadsterReview:{model,scene,camera,renderer,view,render}});
+Object.assign(window,{__roadsterReview:{model,scene,camera,renderer,view,render,pose}});

@@ -547,7 +547,7 @@ export class Race {
         s.bounce += s.vb * dt;
         if (k.offTrack && k.grounded) s.vb += (Math.random() - 0.5) * k.speed * 0.08;
       }
-      r.model.animate(dt, k.forwardSpeed, r.brain.input.steer * (k.spin > 0 ? 0 : 1), s.pitch, s.roll, s.bounce, k.thrusterActive);
+      r.model.animate(dt, k.forwardSpeed, r.brain.input.steer * (k.spin > 0 ? 0 : 1), s.pitch, s.roll, s.bounce, k.thrusterActive, k);
       // effects
       if (dt > 0) this.kartFx(r, dt);
     }
@@ -578,6 +578,17 @@ export class Race {
     const slip = Math.abs(vR);
     const near = r.isPlayer || k.pos.distanceToSquared(this.player.kart.pos) < 120 * 120;
     if (!near) return;
+    if (k.thrusterActive) {
+      for (const x of [-.68, .68]) for (const z of [-1.65, 1.65]) {
+        if (Math.random() > dt * 24) continue;
+        const px = k.pos.x + fx * z - rx * x, pz = k.pos.z + fz * z - rz * x;
+        this.smoke.emit({ x: px, y: k.pos.y + .12, z: pz, vx: k.vel.x * .15, vy: -3, vz: k.vel.z * .15, max: .45, size0: .1, size1: .65, r: .85, g: .94, b: 1, a: .24, drag: .5, grav: 0 });
+        if (k.flightHeight < 4) {
+          const angle = Math.random() * Math.PI * 2;
+          this.smoke.emit({ x: px, y: k.pos.y - k.flightHeight + .08, z: pz, vx: Math.cos(angle) * 3, vy: .25, vz: Math.sin(angle) * 3, max: .6, size0: .2, size1: 1.5, r: .86, g: .91, b: .96, a: .14, drag: 1, grav: 0 });
+        }
+      }
+    }
     // rear wheel positions
     for (let w = 0; w < 2; w++) {
       const wheel = r.model.rearWheelsLocal[w];

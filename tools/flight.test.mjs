@@ -57,7 +57,7 @@ test('U9 ignores lift, low fuel cannot launch, and airborne steering stays finit
 
 test('manual and assisted driving reach but never exceed each vehicle speed cap',()=>{
   for (const vehicle of ['u9x','roadster']) for (const enabled of [false, true]) {
-    const k=new Kart(flatTrack()); k.maxSpeed=vehicleMaxSpeedMps(vehicle); k.accel=8+k.maxSpeed*.12; k.placeAt(100,0,0);
+    const k=new Kart(flatTrack()); k.flightEnabled=vehicle==='roadster'; k.maxSpeed=vehicleMaxSpeedMps(vehicle); k.accel=8+k.maxSpeed*.12; k.placeAt(100,0,0);
     const assist = new DrivingAssist(k.track, k.maxSpeed, k.aLatMax);
     for(let i=0;i<60*120;i++) {
       const input = {throttle:1,steer:0};
@@ -69,13 +69,69 @@ test('manual and assisted driving reach but never exceed each vehicle speed cap'
   }
 });
 
+test('showcase opens only when parked, toggles on presses, and closes before driving',()=>{
+  const k=car(flatTrack());
+  step(k,1,{...idle,action:true}); assert.equal(k.showcase,true);
+  step(k,.1,idle); step(k,.1,{...idle,action:true}); assert.equal(k.showcase,false);
+  step(k,.1,idle); step(k,.1,{...idle,action:true}); assert.equal(k.showcase,true);
+  k.step(1/60,{throttle:1,steer:0}); assert.equal(k.showcase,false);
+  step(k,1,{throttle:1,steer:0}); step(k,.1,{...idle,action:true}); assert.equal(k.showcase,false);
+  k.placeAt(100,0,0); k.flightEnabled=false; step(k,1,{...idle,action:true}); assert.equal(k.showcase,false);
+});
+
+for(const hz of [30,60,120]) test(`roll uses fuel once, preserves flight steering and ends upright at ${hz} Hz`,()=>{
+  const k=car(flatTrack()),baseline=car(flatTrack());
+  step(k,1,lift,hz); step(baseline,1,lift,hz);
+  const input={...lift,throttle:1,steer:.4};
+  step(k,.4,{...input,action:true},hz); step(baseline,.4,input,hz);
+  assert.ok(k.stuntActive && Math.abs(k.stuntRoll)>1);
+  assert.ok(Math.abs(baseline.flightCharge-k.flightCharge-.15)<1e-8);
+  assert.ok(Math.abs(baseline.heading-k.heading)<1e-8);
+  assert.ok(Math.abs(baseline.speed-k.speed)<1e-8);
+  step(k,.7,{...input,action:true},hz); step(baseline,.7,input,hz);
+  assert.equal(k.stuntActive,false); assert.equal(k.stuntRoll,0);
+  assert.ok(Math.abs(baseline.flightCharge-k.flightCharge-.15)<1e-8,'holding does not repeat');
+  step(k,3,idle,hz); assert.ok(k.grounded); assert.equal(k.stuntRoll,0);
+  k.placeAt(100,0,0); assert.equal(k.stuntActive,false);
+});
+
+test('low altitude, low charge, U9 and collisions cannot initiate a roll',()=>{
+  for(const condition of ['low','empty','u9','spin']) {
+    const k=car(flatTrack()); step(k,1,lift);
+    if(condition==='low')k.pos.y=.8;
+    if(condition==='empty')k.flightCharge=.19;
+    if(condition==='u9')k.flightEnabled=false;
+    if(condition==='spin')k.spin=1;
+    k.step(1/120,{...idle,action:true}); assert.equal(k.stuntActive,false,condition);
+  }
+  const landing=car(flatTrack()); step(landing,1,lift); landing.step(1/60,{...lift,action:true});
+  assert.ok(landing.stuntActive); landing.pos.y=0; landing.vel.y=-3;
+  landing.step(1/60,idle); assert.equal(landing.stuntRoll,0); assert.equal(landing.stuntActive,false);
+});
+
+test('Roadster airbrake shortens high-speed stops without changing the speed cap',()=>{
+  const results=[];
+  for(const enabled of [false,true]) {
+    const k=car(flatTrack()); k.flightEnabled=enabled; k.maxSpeed=110; k.vel.z=-90;
+    let steps=0;
+    while(k.speed>.1 && steps++<1000)k.step(1/120,{throttle:-1,steer:0});
+    assert.ok(k.speed<.1); results.push(k.progress);
+    step(k,1,idle); assert.ok(k.airBrake<.002);
+  }
+  assert.ok(results[1]<results[0]*.9,JSON.stringify(results));
+  console.log('90 m/s stopping distances, baseline / Roadster airbrake:',results);
+});
+
 test('Roadster mesh has finite bounds, four wheels and six cold gas jets',()=>{
   const m=buildRoadster(0xc80012);
+  assert.equal(m.doors.length,2);
+  for(const actuator of m.aeroStruts) assert.equal(actuator.parent,m.car,'animated actuators must not be statically merged');
   assert.equal(m.wheels.length,4); assert.equal(m.frontPivots.length,2); assert.equal(m.rearWheelsLocal.length,2); assert.equal(m.jets.length,6);
   m.jets.forEach(j=>j.geometry.computeBoundingSphere());
   let triangles=0;
   m.car.traverse(o=>{if(o.isMesh){const p=o.geometry.attributes.position; assert.ok(Array.from(p.array).every(Number.isFinite));triangles+=(o.geometry.index?.count??p.count)/3;}});
-  assert.ok(triangles<20000, String(triangles));
+  // Includes the newly visible cabin and independent door skins.
+  assert.ok(triangles<24000, String(triangles));
   const size=new THREE.Box3().setFromObject(m.car).getSize(new THREE.Vector3());
   assert.ok(size.x>2 && size.x<2.5 && size.z<6);
   assert.ok(Math.abs(vehicleMaxSpeedMps('u9x')*3.6-496.22)<1e-9);

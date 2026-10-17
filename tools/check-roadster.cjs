@@ -33,6 +33,10 @@ const origin = process.env.BASE_URL || 'http://127.0.0.1:5173';
     const view=async(x,y,z)=>page.evaluate(([x,y,z])=>{const g=window.__nk,root=g.race.player.model.root;const p=root.localToWorld(g.camera.position.clone().set(x,y,z));const target=root.localToWorld(g.camera.position.clone().set(0,.65,0));g.view(p.toArray(),target.toArray());g.advance(1);},[x,y,z]);
     await view(4,2.4,6);
     await page.screenshot({path:'checks/roadster-front.png',timeout:120000});
+    // Context action via real keyboard: parked doors open, throttle closes them.
+    await page.keyboard.down('x'); await page.evaluate(()=>window.__nk.advance(90,1/60,false)); await page.keyboard.up('x');
+    assert.equal(await page.evaluate(()=>window.__nk.race.player.kart.showcase),true);
+    await view(4,2.4,6); await page.screenshot({path:'checks/roadster-showcase.png',timeout:120000});
     await page.evaluate(()=>{const g=window.__nk;g.view(null);g.race.player.kart.placeAt(120,0,120);g.advance(1,1/60,false);});
     await page.keyboard.down('w'); await page.keyboard.down('Space');
     await page.evaluate(()=>window.__nk.advance(120,1/60,false));
@@ -41,6 +45,14 @@ const origin = process.env.BASE_URL || 'http://127.0.0.1:5173';
     await view(4,1.8,-6);
     assert.match(await page.locator('#assist-status').innerText(),/空中转向辅助/);
     await page.screenshot({path:'checks/roadster-flight.png',timeout:120000});
+    assert.equal(await page.evaluate(()=>window.__nk.race.player.kart.showcase),false);
+    const beforeRoll=await page.evaluate(()=>window.__nk.race.player.kart.flightCharge);
+    await page.keyboard.down('x');await page.evaluate(()=>window.__nk.advance(25,1/60,false));await page.keyboard.up('x');
+    assert.ok(await page.evaluate(()=>window.__nk.race.player.kart.stuntActive));
+    assert.ok(await page.evaluate(()=>window.__nk.race.player.kart.flightCharge)<beforeRoll-.15);
+    await view(4,1.8,-6);await page.screenshot({path:'checks/roadster-roll.png',timeout:120000});
+    await page.evaluate(()=>window.__nk.advance(40,1/60,false));
+    assert.equal(await page.evaluate(()=>window.__nk.race.player.kart.stuntRoll),0);
     await page.keyboard.up('w');await page.keyboard.up('Space');
     await page.evaluate(()=>window.__nk.advance(30));
     assert.equal(await page.evaluate(()=>window.__nk.race.player.kart.thrusterActive),false);
@@ -64,6 +76,7 @@ const origin = process.env.BASE_URL || 'http://127.0.0.1:5173';
     assert.ok(Math.abs(await page.evaluate(()=>window.__nk.race.player.kart.maxSpeed*3.6)-496.22)<1e-6);
     assert.notEqual(await page.evaluate(()=>window.__nk.race.bestTime()),19);
     assert.equal(await page.locator('.drive-lift').isVisible(),false);
+    assert.equal(await page.locator('.drive-action').isVisible(),false);
     // Real keyboard input passes through UserBrain and triggers predictive braking.
     await page.evaluate(()=>{
       const g=window.__nk,k=g.race.player.kart,tr=g.track;
@@ -88,7 +101,7 @@ const origin = process.env.BASE_URL || 'http://127.0.0.1:5173';
       // Wait for the resize event before manually rendering, otherwise canvas resizing clears the frame.
       await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
       await page.evaluate(()=>window.__nk.advance(2));
-      const layout=await page.evaluate(()=>['.drive-lift','.flight-panel','.drive-pedal','.drive-brake','.steering-pad','.speedo'].map(s=>{const r=document.querySelector(s).getBoundingClientRect();return {s,x:r.x,y:r.y,right:r.right,bottom:r.bottom,inside:r.x>=0&&r.y>=0&&r.right<=innerWidth&&r.bottom<=innerHeight};}));
+      const layout=await page.evaluate(()=>['.drive-action','.drive-lift','.flight-panel','.drive-pedal','.drive-brake','.steering-pad','.speedo','[aria-label="回到检查点"]'].filter(s=>document.querySelector(s)).map(s=>{const r=document.querySelector(s).getBoundingClientRect();return {s,x:r.x,y:r.y,right:r.right,bottom:r.bottom,inside:r.x>=0&&r.y>=0&&r.right<=innerWidth&&r.bottom<=innerHeight};}));
       assert.ok(layout.every(r=>r.inside),JSON.stringify(layout));
       const bottle = layout.find(r=>r.s==='.flight-panel');
       assert.ok(bottle.right-bottle.x<=50 && bottle.bottom-bottle.y<=72,'compact bottle footprint');

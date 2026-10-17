@@ -4,7 +4,7 @@ Research date: 2026-10-17 (Asia/Shanghai).
 
 ## Sources
 
-**Primary visual reference (revision 2): user-supplied `6258.mp4`.**
+**Original visual reference: user-supplied `6258.mp4`.**
 960 × 560, 2,136 decoded frames, approximately 71.73 seconds.
 SHA-256: D054B5B82F5537C9725FC12A1888EF5A101711C8789F8C3BB0E5201DBD8FFE90.
 This is a gameplay video; its depicted vehicle is the requested visual target,
@@ -31,6 +31,25 @@ provided. They no longer determine the detailed body shape:
 - Electrek, 2026-10-15: https://electrek.co/2026/10/15/tesla-unveils-cyberfied-new-roadster-kickflip/
   Search excerpt describes the revised angular design and Rocket variant.
 
+## October 16 video refinement (revision 3)
+
+Ten user-supplied recordings in `video/` were sampled at nine time positions each.
+These are visual references, not independently verified engineering specifications.
+The original recordings and extracted frames remain local.
+
+| Recording (2026-10-16) | Useful evidence | Implementation |
+| --- | --- | --- |
+| 212830, 2.9–20.5 s | Raised rear airbrake, underside and supports; broad five-spoke wheels | Hinged deck, actuators, revised aero wheel faces |
+| 213456, 0.9–37.9 s | Butterfly doors, ivory seats/yoke, slim screen, black interior | Open cabin tub, separate door hinges/glass, seats, armrests, console and screen |
+| 212316, 0.5–21.6 s | Cold-gas clouds during track launch | White condensation jets and ground wash |
+| 212554 and 214343, especially 214343 at 5.1–7.7 s | Airborne rotation and landing | Fuel-cost arcade roll with upright landing recovery |
+| 212351, 213726 | Steep-ramp/wall demonstrations | Motion reference only; wall driving is not implemented |
+| 213824, 213921, 214054 | Mechanical exhibits, exploded rendering and engineering montage | Context; hidden machinery is not claimed as an accurate reconstruction |
+
+Fixed front/side/rear/quarter camera renders were compared before and after changes.
+Opening the doors also exposed and helped fix interior/outer-skin intersections.
+The geometry budget is under 24,000 triangles, including cabin and articulated parts.
+
 ## Scope and confidence
 
 This is ORIGINAL procedural geometry reconstructed by visual comparison with
@@ -55,8 +74,15 @@ No downloaded vehicle meshes or video textures are included.
 - Optional corner assistance anticipates braking and gently corrects at road edges;
   assisted records are separate from manual driving. Steering assistance continues through
   powered hover and descent; throttle, brakes and lift remain manually controlled.
-- Flight stays inside the existing track corridor. This is short hovering and
-  driving, not unrestricted aircraft simulation or a barrel-roll recreation.
+- X / standard gamepad B / context touch button: at rest (<1 m/s), toggle butterfly
+  doors and rear deck. Throttle, brake or lift closes the showcase.
+- During a hover session above 1.5 m, press the same action with >=20% fuel to roll
+  once in 0.9 seconds, costing 15%. Holding does not repeat. Steering still works;
+  landing, respawn or collision spin cancels the visual roll and restores upright attitude.
+- Grounded forward braking above 15 m/s deploys the active airbrake. Added drag is
+  an arcade tuning value (up to 18 m/s²), not measured Tesla aerodynamic data.
+  It does not lower straight-line top speed. Roadster records now use flight-v2.
+- Flight stays inside the existing track corridor; no unrestricted flight or wall driving.
 - Separate best times, sector splits and ghosts prevent mixing flight-assisted
   Roadster records with existing U9 records.
 

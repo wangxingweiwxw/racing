@@ -44,6 +44,11 @@ export class KartModel {
   private jets: THREE.Mesh[] = [];
   private spoiler: THREE.Group | null = null;
   private jetTime = 0;
+  private doors: THREE.Group[] = [];
+  private yoke?: THREE.Group;
+  private aeroStruts: THREE.Mesh[] = [];
+  private doorOpen = 0;
+  private wingOpen = 0;
 
   constructor(look: KartLook, detailed = true, vehicle: VehicleId = "u9x") {
     if (vehicle === "roadster") {
@@ -53,6 +58,7 @@ export class KartModel {
       this.wheels.push(...parts.wheels); this.frontPivots.push(...parts.frontPivots);
       this.rearWheelsLocal.push(...parts.rearWheelsLocal);
       this.brakeLights = parts.brakeLights; this.jets = parts.jets; this.spoiler = parts.spoiler;
+      this.doors = parts.doors; this.yoke = parts.yoke; this.aeroStruts = parts.aeroStruts;
       return;
     }
     const template = detailed ? highModel : lowModel;
@@ -135,11 +141,11 @@ export class KartModel {
     }
   }
 
-  animate(dt: number, forwardSpeed: number, steer: number, pitch: number, roll: number, bounce: number, thrust = false) {
+  animate(dt: number, forwardSpeed: number, steer: number, pitch: number, roll: number, bounce: number, thrust = false, state: { airBrake?: number; showcase?: boolean; stuntRoll?: number } = {}) {
     this.wheelSpin = (this.wheelSpin + forwardSpeed / 0.36 * dt) % (Math.PI * 2);
     for (const wheel of this.wheels) wheel.rotation.x = this.wheelSpin;
     for (const pivot of this.frontPivots) pivot.rotation.y = -steer * 0.42;
-    this.body.rotation.set(pitch, 0, roll);
+    this.body.rotation.set(pitch, 0, roll + (state.stuntRoll ?? 0));
     this.body.position.y = bounce;
     const braking = dt > 0 && forwardSpeed < this.lastSpeed - dt * 2;
     for (const light of this.brakeLights) light.emissiveIntensity = braking ? 2.5 : 0.8;
@@ -150,9 +156,14 @@ export class KartModel {
       jet.scale.y = .8 + .18 * Math.sin(this.jetTime * 37 + i * 1.7);
     });
     if (this.spoiler) {
-      this.spoiler.position.y = (this.spoiler.userData.restY ?? .84) + (braking ? .045 : Math.min(.025, Math.abs(forwardSpeed) * .0006));
-      this.spoiler.rotation.x = braking ? -.1 : 0;
+      this.wingOpen += ((state.showcase ? 1 : state.airBrake ?? 0) - this.wingOpen) * (1 - Math.exp(-dt * 7));
+      this.spoiler.position.y = this.spoiler.userData.restY + .06 * this.wingOpen;
+      this.spoiler.rotation.x = .8 * this.wingOpen;
+      for (const strut of this.aeroStruts) { strut.scale.y = .03 + .22 * this.wingOpen; strut.position.y = .96 + .11 * this.wingOpen; }
     }
+    this.doorOpen += (Number(!!state.showcase) - this.doorOpen) * (1 - Math.exp(-dt * 4));
+    for (const door of this.doors) { door.rotation.x = .95 * this.doorOpen; door.rotation.z = -door.userData.side * .35 * this.doorOpen; }
+    if (this.yoke) this.yoke.rotation.z = -steer * .35;
   }
 
   dispose() {

@@ -23,6 +23,8 @@ export interface KartInput {
   steer: number;
   /** Hold for Roadster cold-gas hover; release to descend. */
   lift?: boolean;
+  /** Stationary showcase / airborne roll, on the press edge. */
+  action?: boolean;
 }
 
 export interface KartEvents {
@@ -66,6 +68,13 @@ export class Kart {
   thrusterActive = false;
   private flightSession = false;
   private flightLockout = false;
+  showcase = false;
+  airBrake = 0;
+  stuntRoll = 0;
+  private actionLatch = false;
+  private stuntTime = 0;
+  private stuntDirection = 1;
+  get stuntActive() { return this.stuntTime > 0; }
   halfWidth = KART_HALF_WIDTH;
   halfLength = 2.48;
 
@@ -110,6 +119,7 @@ export class Kart {
     // Respawning cannot refill the tank or bypass the release-to-rearm latch.
     this.flightLockout = false;
     this.spin = 0;
+    this.showcase = false; this.airBrake = 0; this.stuntRoll = 0; this.stuntTime = 0; this.actionLatch = false;
     this.lastS = this.q.s;
     this.progress = progress;
     this.checkpointS = s;
@@ -162,6 +172,24 @@ export class Kart {
     this.hint = this.q.i;
     const groundY = tr.surfaceY(this.q);
     const onGround = this.pos.y <= groundY + 0.06;
+    const actionPressed = !!input.action && !this.actionLatch;
+    this.actionLatch = !!input.action;
+    if (this.flightEnabled && actionPressed && this.spin <= 0) {
+      if (onGround && this.speed < 1) this.showcase = !this.showcase;
+      else if (this.flightSession && this.flightHeight > 1.5 && this.flightCharge >= .2 && !this.stuntActive) {
+        this.stuntTime = Number.EPSILON;
+        this.stuntDirection = input.steer < 0 ? -1 : 1;
+        this.flightCharge -= .15;
+      }
+    }
+    if (Math.abs(input.throttle) > .05 || input.lift || !onGround || this.speed >= 1) this.showcase = false;
+    if (this.stuntActive) {
+      this.stuntTime += dt;
+      const t = Math.min(1, this.stuntTime / .9);
+      // Arcade attitude animation; horizontal steering and corridor protection stay active.
+      this.stuntRoll = this.stuntDirection * Math.PI * 2 * t * t * (3 - 2 * t);
+      if (t >= 1 || onGround || this.spin > 0) { this.stuntTime = 0; this.stuntRoll = 0; }
+    }
     if (!input.lift) this.flightLockout = false;
     const canLaunch = this.flightSession || (onGround && this.flightCharge >= .25 && this.forwardSpeed >= -.1);
     this.thrusterActive = this.flightEnabled && !!input.lift && !this.flightLockout && canLaunch && this.flightCharge > 0 && this.spin <= 0;
@@ -198,6 +226,8 @@ export class Kart {
       } else this.reverseHoldTime = 0;
     }
     const braking = brakeHeld && !this.reverseEngaged;
+    const aeroTarget = this.flightEnabled && onGround && braking && vF > 15 ? Math.min(1, vF / 50) : 0;
+    this.airBrake += (aeroTarget - this.airBrake) * (1 - Math.exp(-dt * 7));
     const brakingReverse = fb > 0 && vF < -STOP_SPEED;
     if (!onGround) {
       lr *= this.flightSession ? .7 : DIRECTION_NERF_IN_AIR;
@@ -213,6 +243,7 @@ export class Kart {
       aF += fb * (this.reverseEngaged ? 2.5 : this.accel) * powerFade;
     }
     // rolling resistance + air drag
+    if (onGround && braking && vF > 0) aF -= Math.min(18, 8 * (vF / 60) ** 2) * this.airBrake;
     aF -= Math.sign(vF) * (0.25 + 0.00045 * vF * vF) * (onGround ? 1 : 0.4);
     if (this.offTrack && onGround) aF -= Math.sign(vF) * 2.2;
     // gravity along the slope
@@ -306,6 +337,7 @@ export class Kart {
         this.vel.y = Math.max(this.vel.y, vy);
       }
       this.grounded = true;
+      this.stuntTime = 0; this.stuntRoll = 0;
       this.airTime = 0;
       if (!this.thrusterActive) this.flightSession = false;
     } else {

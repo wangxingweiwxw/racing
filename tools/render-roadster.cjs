@@ -13,6 +13,10 @@ const out=path.resolve('checks/roadster-video',process.argv[2]||'latest');
    await page.evaluate(n=>window.__roadsterReview.view(n),name);await page.screenshot({path:path.join(out,name+'.png')});
   }
   const stats=await page.evaluate(()=>{const g=window.__roadsterReview;return {drawCalls:g.renderer.info.render.calls,triangles:g.renderer.info.render.triangles};});
+  await page.evaluate(()=>window.__roadsterReview.pose(true));
+  for(const name of ['quarter','side','front']) {
+   await page.evaluate(n=>window.__roadsterReview.view(n),name);await page.screenshot({path:path.join(out,'showcase-'+name+'.png')});
+  }
   fs.writeFileSync(path.join(out,'render.json'),JSON.stringify({errors,...stats},null,2));
   console.log(JSON.stringify({out,errors,...stats}));if(errors.length)process.exitCode=1;
  }finally{await browser.close();}

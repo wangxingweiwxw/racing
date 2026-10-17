@@ -17,14 +17,20 @@
 #hud .touch .drive-lift { position: absolute; right: max(38px,env(safe-area-inset-right)); bottom: 215px; width: 64px; height: 64px; padding: 10px; border: 1px solid #bceeff80; border-radius: 14px; background: #081a2cb8; }
 #hud .drive-lift svg { height: 30px; }
 #hud .drive-lift span { font-size: 11px; }
+#hud .touch .drive-action { position: absolute; right: max(38px,env(safe-area-inset-right)); bottom: 290px; width: 48px; height: 48px; padding: 4px; border: 1px solid #bceeff80; border-radius: 12px; background: #081a2cb8; }
+#hud .touch .drive-action svg { height: 25px; }
+#hud .drive-action span { font-size: 10px; }
+#hud .drive-action:disabled { opacity: .35; }
 @media (max-height: 540px) and (orientation: landscape) {
   #hud .flight-panel { bottom: 148px; left: max(22px,env(safe-area-inset-left)); }
   #hud .flight-panel small { display: none; }
   #hud .touch .drive-lift { bottom: 142px; right: 22px; width: 54px; height: 54px; padding: 5px; }
+  #hud .touch .drive-action { bottom: 148px; right: 84px; }
 }
 @media (max-width: 600px) and (orientation: portrait) {
   #hud .flight-panel { bottom: 248px; left: max(12px,env(safe-area-inset-left)); }
   #hud .touch .drive-lift { bottom: 248px; right: 10px; width: 48px; height: 48px; padding: 4px; }
+  #hud .touch .drive-action { bottom: 304px; right: 10px; }
   #hud .drive-lift svg { height: 25px; }
 }
 @media (max-width: 600px), (max-height: 540px) and (orientation: landscape) {

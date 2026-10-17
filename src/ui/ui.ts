@@ -348,6 +348,7 @@ export class UI {
           row("转向", "A", "D"),
           row("使用道具", "E", "F"),
           row("Roadster 悬浮（按住）", "Space", "LB"),
+          row("Roadster 展车 / 空中翻滚", "X", "B"),
           row("回到检查点", "R"),
           row("切换视角", "C"),
           row("回看", "Q"),
@@ -366,7 +367,7 @@ export class UI {
           h("br"),
           "倒车：车速归零后持续按住刹车 2 秒进入 R 挡，继续按住即可倒车，最高 5 km/h。松开刹车会重置计时，踩油门可恢复前进。",
           h("br"),
-          "Roadster：按住空格 / 手柄 LB / 屏幕悬浮按钮短时升空，WASD 继续控制。松开或推进剂耗尽后自动降落；落地松开悬浮键恢复推进剂，至少 25% 才能再次起飞。悬浮限制在赛道走廊内。",
+          "Roadster：按住空格 / 手柄 LB / 屏幕悬浮按钮短时升空，WASD 继续控制。松开或推进剂耗尽后自动降落；落地松开悬浮键恢复推进剂，至少 25% 才能再次起飞。X / 手柄 B / 屏幕展车按钮：停车时开合车门、展开尾翼；升空超过 1.5 米且余量至少 20% 时翻滚一次，消耗 15% 推进剂。高速制动自动展开气动尾翼，帮助缩短刹车距离。飞行与特技均为街机玩法，悬浮限制在赛道走廊内。",
           h("br"),
           "道具（对手赛）：落后越多补给越快；空投炸弹抛向前方，16 m 范围内的车会被掀起。",
           h("br"),
@@ -566,6 +567,7 @@ Three.js、Vite、TypeScript。声音由 Web Audio 实时合成，未使用音�
     this.els["vehicle-badge"].replaceChildren(h("span", {}, v.brand), h("b", {}, v.badge), h("small", {}, v.trim));
     this.els["flight-panel"].classList.toggle("hidden", !race.player.kart.flightEnabled);
     this.touchHost.querySelector(".drive-lift")?.classList.toggle("hidden", !race.player.kart.flightEnabled);
+    this.touchHost.querySelector(".drive-action")?.classList.toggle("hidden", !race.player.kart.flightEnabled);
     this.mapBase = null;
     this.profBase = null;
     this.lastSector = "";
@@ -739,12 +741,16 @@ Three.js、Vite、TypeScript。声音由 Web Audio 实时合成，未使用音�
     assistStatus.textContent = assist ? (k.flightControlActive ? `空中转向辅助 · ${assist.recovering ? "纠偏" : "就绪"}` : !k.grounded ? "弯道辅助 · 落地后恢复" : assist.braking ? `辅助制动 · 目标 ${Math.round(assist.targetSpeed * 3.6)} km/h` : assist.recovering ? "弯道辅助 · 路肩纠偏" : "弯道辅助 · 就绪") : "手动驾驶";
     assistStatus.classList.toggle("active", !!assist?.braking || !!assist?.recovering);
     if (k.flightEnabled) {
+      const action = this.touchHost.querySelector<HTMLButtonElement>(".drive-action")!;
+      const airborne = k.flightControlActive;
+      action.querySelector("span")!.textContent = airborne ? "翻滚" : k.showcase ? "收起" : "展车";
+      action.disabled = airborne ? k.flightHeight <= 1.5 || k.flightCharge < .2 || k.stuntActive : !k.grounded || k.speed >= 1;
       const charge = Math.round(k.flightCharge * 100);
       this.els["flight-fill"].style.width = `${charge}%`;
       this.els["flight-meter"].setAttribute("aria-valuenow", String(charge));
       this.els["flight-charge"].textContent = `${charge}% 推进剂`;
       this.els["flight-alt"].textContent = `${k.flightHeight.toFixed(1)} m 离地`;
-      this.els["flight-state"].textContent = k.thrusterActive ? "悬浮中" : !k.grounded ? "降落中" : charge < 25 ? "恢复中" : "就绪";
+      this.els["flight-state"].textContent = k.stuntActive ? "翻滚中" : k.thrusterActive ? "悬浮中" : !k.grounded ? "降落中" : k.showcase ? "展车中" : charge < 25 ? "恢复中" : "就绪";
       this.els["flight-panel"].classList.toggle("active", k.thrusterActive);
       this.els["flight-panel"].classList.toggle("low", charge < 25);
       this.els["flight-panel"].style.setProperty("--fuel", String(k.flightCharge));

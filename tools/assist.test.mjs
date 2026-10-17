@@ -11,6 +11,7 @@ const angle = x => Math.atan2(Math.sin(x), Math.cos(x));
 const clamp = x => Math.max(-1, Math.min(1, x));
 function car(track, vehicle = 'u9x', s = 0) {
   const k = new Kart(track);
+  k.flightEnabled = vehicle === 'roadster';
   k.maxSpeed = vehicleMaxSpeedMps(vehicle); k.accel = 8 + k.maxSpeed * .12; k.outOfBoundsSpeed = 19.8;
   k.placeAt(s, 0, 0);
   return k;
