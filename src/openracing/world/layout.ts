@@ -7,6 +7,7 @@ import { ColliderWorld, aabb, makeBox, makeSphere, rampBox, segmentBox } from '.
 import type { River } from '../physics/vehicle.ts';
 
 export const RIVER: River = { x0: 0, x1: 300, waterY: -5 };
+export const RIVER_CROSSINGS = [-300, 0, 300] as const;
 export const BOUNDS = { x0: -900, x1: 1100, z0: -700, z1: 700, top: 700 };
 export const PUXI_COLS = [-150, -270, -390, -510, -630, -750];
 export const PUDONG_COLS = [350, 470, 590, 710, 830, 950, 1070];
@@ -168,10 +169,11 @@ export function buildLayout(seed = 20261016): Layout {
 
   // 上平台坡道（中山东一路 → 亲水平台）+ 平台边的飞跃跳台（正对浦东）
   for (const z of [-540, -300, 0, 300, 540]) {
-    ramps.push({ a: new Vector3(-40, 0, z), b: new Vector3(BUND.promX0, BUND.promY, z), width: 12 });
+    ramps.push({ a: new Vector3(-40, 0, z), b: new Vector3(BUND.promX0, BUND.promY, z), width: 20 });
   }
-  for (const z of [-300, 0, 300]) {
-    ramps.push({ a: new Vector3(-16, BUND.promY, z), b: new Vector3(-2, 6.2, z), width: 9 });
+  for (const z of RIVER_CROSSINGS) {
+    ramps.push({ a: new Vector3(-16, BUND.promY, z), b: new Vector3(-2, 6.2, z), width: 18 });
+    ramps.push({ a: new Vector3(340, 0, z), b: new Vector3(302, 6.2, z), width: 18 });
   }
   for (const r of ramps) world.add(rampBox(r.a, r.b, r.width));
 

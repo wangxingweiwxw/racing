@@ -1,5 +1,5 @@
 // 圆形小地图：随车头旋转，已探索的街道更亮，绿色虚线指向当前目标。
-import { PEARL, RIVER, BOUNDS, BUND, JINMAO, SHC, SWFC } from '../world/layout.ts';
+import { PEARL, RIVER, RIVER_CROSSINGS, BOUNDS, BUND, JINMAO, SHC, SWFC } from '../world/layout.ts';
 import type { Layout } from '../world/layout.ts';
 
 const RANGE = 260; // 半径对应的米数
@@ -23,6 +23,7 @@ export class Minimap {
   draw(
     px: number, pz: number, fx: number, fz: number, goal: { x: number; z: number } | null, seen: Set<string>,
     cars: readonly { x: number; z: number }[] = [],
+    boats: readonly {x:number;z:number}[] = [],
   ): void {
     const g = this.ctx;
     const S = this.size;
@@ -61,6 +62,10 @@ export class Minimap {
       if (st.axis === 'x') g.fillRect(st.from, st.at - w / 2, st.to - st.from, w);
       else g.fillRect(st.at - w / 2, st.from, w, st.to - st.from);
     }
+    g.strokeStyle='#58b9bb';g.lineWidth=3;g.setLineDash([12,12]);
+    for(const z of RIVER_CROSSINGS){g.beginPath();g.moveTo(-90,z);g.lineTo(390,z);g.stroke();}
+    g.setLineDash([]);g.fillStyle='#ffe0a0';
+    for(const boat of boats){g.beginPath();g.moveTo(boat.x,boat.z-10);g.lineTo(boat.x+6,boat.z+7);g.lineTo(boat.x-6,boat.z+7);g.closePath();g.fill();}
     for (const [lx, lz, col, r] of [
       [PEARL.x, PEARL.z, '#ff4fa8', 16],
       [JINMAO.x, JINMAO.z, '#ffc26b', 14],

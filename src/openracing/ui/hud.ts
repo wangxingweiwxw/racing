@@ -137,7 +137,7 @@ export class Hud {
 
   update(
     dt: number, v: Vehicle, combo: Combo, objs: Objectives, seen: Set<string>,
-    world: { cars: readonly { x: number; z: number }[]; time: number },
+    world: { cars: readonly { x: number; z: number }[]; boats?:readonly {x:number;z:number}[]; time: number },
   ): void {
     const cars = world.cars;
     this.frames++;
@@ -205,7 +205,7 @@ export class Hud {
     el.airRing.style.strokeDashoffset = String(RING * (1 - air * 0.25));
     el.airRing.classList.toggle('low', air < 0.2);
     el.airVal.textContent = `${Math.round(v.air)} L`;
-    el.mode.textContent = v.stuntActive?'空中翻滚':v.landingAssist?'着陆缓冲':v.showcase?'展车':v.mode==='air'?'空中转向辅助':MODE_LABEL[v.mode];
+    el.mode.textContent = v.stuntActive?'空中翻滚':v.riverAssist?'跨江辅助':v.riverCharging?'跳台补气':v.landingAssist?'着陆缓冲':v.showcase?'展车':v.mode==='air'?'空中转向辅助':MODE_LABEL[v.mode];
     const bottle=$('gas-bottle'),percent=Math.round(v.air/TUNING.tank*100);
     bottle.style.setProperty('--fuel',String(v.air/TUNING.tank));bottle.setAttribute('aria-valuenow',String(percent));bottle.classList.toggle('low',percent<20);$('gas-percent').textContent=percent+'%';
     const action=document.querySelector<HTMLElement>('[data-control=action]');if(action)action.textContent=v.mode==='air'?'翻滚':v.showcase?'收起':'展车';
@@ -249,7 +249,7 @@ export class Hud {
       fx /= fl;
       fz /= fl;
     }
-    this.minimap.draw(v.pos.x, v.pos.z, fx, fz, { x: goal.target.x, z: goal.target.z }, seen, cars);
+    this.minimap.draw(v.pos.x, v.pos.z, fx, fz, { x: goal.target.x, z: goal.target.z }, seen, cars,world.boats);
     const dx = goal.target.x - v.pos.x;
     const dz = goal.target.z - v.pos.z;
     const ang = Math.atan2(-fz * dx + fx * dz, fx * dx + fz * dz);

@@ -26,10 +26,11 @@ import { Traffic } from './traffic/traffic.ts';
 import type { TrafficEvent } from './traffic/traffic.ts';
 import { buildCity } from './world/city.ts';
 import { buildLandmarks } from './world/landmarks.ts';
-import { RIVER, buildLayout } from './world/layout.ts';
+import { RIVER, RIVER_CROSSINGS, buildLayout } from './world/layout.ts';
 import { radialTexture } from './world/textures.ts';
 import { buildTouch } from './ui/touch.ts';
 import './ui/mobile.css';
+import { RiverCruises } from './world/cruises.ts';
 
 const params = new URLSearchParams(location.search);
 const LOW = params.get('q') === 'low' || location.hash === '#low' || (params.get('q')!=='high'&&(innerWidth<=900||matchMedia('(pointer: coarse)').matches));
@@ -78,7 +79,10 @@ scene.add(city.group);
 scene.add(buildLandmarks());
 const network = buildNetwork(layout);
 const traffic = new Traffic(network, LOW ? 70 : 180, 7, layout.world);
-const env: Env = { world: layout.world, river: RIVER, dynamic: traffic };
+const cruises = new RiverCruises();
+const env: Env = { world: layout.world, river: RIVER, crossings:RIVER_CROSSINGS, dynamic: {
+  contacts(p,r,margin,pool,start){return cruises.contacts(p,r,margin,pool,traffic.contacts(p,r,margin,pool,start));}
+} };
 
 // ---------- 车 ----------
 const car = buildCar();
@@ -123,7 +127,7 @@ captureEnv();
 // 车流、行人、红绿灯在拍环境贴图之后再加入（会动的东西不进反射）
 const trafficView = new TrafficView(traffic);
 const signalView = new SignalView(network);
-scene.add(trafficView.group, signalView.group);
+scene.add(trafficView.group, signalView.group, cruises.group);
 
 // ---------- 游戏状态 ----------
 const vehicle = new Vehicle(layout.spawn.pos.clone(), layout.spawn.heading.clone());
@@ -189,11 +193,12 @@ function groundBelow(from: Vector3, dir: Vector3, max: number) {
 }
 
 function dustRing(at: Vector3, n: Vector3, count: number, power: number): void {
+  const center=at.clone(); // at can be the same scratch vector used for particle velocity.
   for (let i = 0; i < count; i++) {
     const a = Math.random() * Math.PI * 2;
     _v.set(Math.cos(a), 0, Math.sin(a));
     _v.addScaledVector(n, -_v.dot(n)).normalize().multiplyScalar(power * (0.6 + Math.random() * 0.6)).addScaledVector(n, 1 + Math.random());
-    smoke.spawn(at, _v, { life: 1.0 + Math.random() * 0.5, size0: 0.8, size1: 3.5 + Math.random() * 2, alpha: 0.16, color: DUST, drag: 2.4, gravity: 0.3 });
+    smoke.spawn(center, _v, { life: 1.0 + Math.random() * 0.5, size0: 0.8, size1: 3.5 + Math.random() * 2, alpha: 0.16, color: DUST, drag: 2.4, gravity: 0.3 });
   }
 }
 
@@ -331,7 +336,7 @@ const plumeK = new Array<number>(car.sockets.length).fill(0);
 
 function updateCarVisual(dt: number, t: number): void {
   suspensionVelocity+=(-suspension*100-suspensionVelocity*15)*dt;
-  suspension=Math.max(-.11,Math.min(.04,suspension+suspensionVelocity*dt));
+  suspension=Math.max(-.065,Math.min(.04,suspension+suspensionVelocity*dt));
   car.animate(dt,vehicle,suspension);
   _up.set(0, 1, 0).applyQuaternion(renderQ);
   carGround.copy(renderPos).addScaledVector(_up, -R);
@@ -427,6 +432,7 @@ function updateCarVisual(dt: number, t: number): void {
 
 // ---------- 主循环 ----------
 function stepGame(): void {
+  cruises.update(vehicle.time+DT);
   const ev = vehicle.step(input.state, DT, env);
   for (const e of ev) onEvent(e);
   // 先结算连击（撞击判负），再处理车流 / 警察事件 —— 撞毁警车的奖励会开启一段新连击，而不是被同一次撞击清掉
@@ -490,7 +496,7 @@ function frame(now: number): void {
   }
   trafficView.update(camera);
   signalView.update(dt, traffic.time);
-  hud.update(dt, vehicle, combo, objectives, discovery.seen, { cars: traffic.cars, time: elapsed });
+  hud.update(dt, vehicle, combo, objectives, discovery.seen, { cars: traffic.cars, boats:cruises.ships.map(s=>s.root.position), time: elapsed });
   sfx.update(vehicle, input.state.throttle);
   post.render(Math.min(vehicle.speedKmh / 300, 1), vehicle.mainThrust, vehicle.fanOn && vehicle.mode !== 'ground' ? 1 : 0);
   if (!MANUAL) requestAnimationFrame(frame);
@@ -516,7 +522,7 @@ goBtn.addEventListener('click', () => {
   if (!started) {
     started = true;
     sfx.start();
-    hud.card('沿南京东路向东', '冲上外滩跳台，飞越黄浦江', 'info', 3.2);
+    hud.card('沿南京东路向东', '青色跳台补气 · 离台自动跨江辅助', 'info', 3.2);
   }
 });
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&started){paused=true;input.clear();startEl.classList.remove('hidden');goBtn.textContent='继续驾驶';}});
@@ -542,6 +548,7 @@ Object.assign(window, {
     combo,
     objectives,
     traffic,
+    cruises,
     start: () => goBtn.click(),
     teleport(x: number, y: number, z: number, yawDeg = 90) {
       vehicle.place(new Vector3(x, y, z), new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), (yawDeg * Math.PI) / 180));

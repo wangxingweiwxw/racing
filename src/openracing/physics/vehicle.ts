@@ -37,6 +37,8 @@ export interface Env {
   river: River;
   /** 车流等动态碰撞体（可选） */
   dynamic?: DynamicSource;
+  /** Marked launch lanes; omitted in free-flight test worlds. */
+  crossings?: readonly number[];
 }
 
 export type Mode = 'ground' | 'wall' | 'ceiling' | 'air' | 'sunk';
@@ -68,8 +70,8 @@ export const TUNING = {
   steerHigh: 1.05,
   hopImpulse: 9.5,
   hopCost: 40,
-  hoverCost: 75,
-  boostCost: 40,
+  hoverCost: 48,
+  boostCost: 26,
   rcsAccel: 7,
   rcsDamp: 2.2,
   rcsCost: 4,
@@ -131,6 +133,9 @@ export class Vehicle {
   showcase = false;
   stuntRoll = 0;
   landingAssist = false;
+  riverAssist = 0;
+  riverCharging = false;
+  private riverLane = 0;
   private stuntTime = 0;
   private stuntDirection = 1;
   private prevAction = false;
@@ -170,6 +175,7 @@ export class Vehicle {
     this.groundN.set(0, 1, 0);
     this.showcase=false;this.stuntRoll=0;this.stuntTime=0;this.prevAction=false;
     this.hoverY=pos.y+3.5;this.landingAssist=false;
+    this.riverAssist=0;this.riverCharging=false;this.airTime=0;
   }
 
   up(out = new Vector3()): Vector3 {
@@ -192,14 +198,17 @@ export class Vehicle {
   private alignUp(target: Vector3, t: number): void {
     this.up(_up);
     _q.setFromUnitVectors(_up, target);
-    if (t < 1) _q.slerpQuaternions(_q2.identity(), _q, t);
-    this.q.premultiply(_q).normalize();
+    // The output must not alias the target: slerpQuaternions copies its first
+    // argument before reading the second, which previously erased the correction.
+    _q2.identity().slerp(_q, clamp(t,0,1));
+    this.q.premultiply(_q2).normalize();
   }
 
   step(inp: DriveInput, dt: number, env: Env): VehicleEvent[] {
     this.events.length = 0;
     this.time += dt;
     this.landingAssist=false;
+    this.riverCharging=false;
     const actionEdge=!!inp.action&&!this.prevAction;this.prevAction=!!inp.action;
     if(actionEdge){
       if(this.grounded&&this.mode==='ground'&&this.vel.length()<1)this.showcase=!this.showcase;
@@ -228,6 +237,7 @@ export class Vehicle {
       this.vel.set(0, 0, 0);
       this.angVel.set(0, 0, 0);
       this.stuntTime=0;this.stuntRoll=0;this.showcase=false;this.hoverY=this.pos.y+3.5;
+      this.riverAssist=0;
       this.push('respawn');
     }
     this.prevReset = inp.reset;
@@ -256,6 +266,23 @@ export class Vehicle {
     // ---- 推进器 ----
     this.up(_up);
     this.fwd(_fwd);
+    const lane=env.crossings?.find(z=>Math.abs(this.pos.z-z)<20);
+    const bank=env.river;
+    const west=this.pos.x>=bank.x0-100&&this.pos.x<bank.x0-10;
+    const east=this.pos.x<=bank.x1+100&&this.pos.x>bank.x1+10;
+    // The marked supply zone also catches an early low hover, so holding the
+    // mobile lift button does not miss the refill before the river.
+    if(lane!==undefined&&(this.grounded||(this.pos.y>.5&&this.pos.y<8))&&(west||east)&&this.groundN.y>.7){
+      this.riverCharging=this.air<T.tank;
+      this.air=Math.min(T.tank,this.air+240*dt);
+    }
+    if(this.riverAssist&&(inp.throttle<-.2||this.air<=0||Math.abs(this.pos.z-this.riverLane)>70||
+      (this.riverAssist>0?(this.pos.x>bank.x1+14||this.pos.x<bank.x0-40):(this.pos.x<bank.x0-14||this.pos.x>bank.x1+40))))this.riverAssist=0;
+    if(!this.riverAssist&&!this.grounded&&lane!==undefined&&this.pos.y>.5&&this.pos.y<20&&this.air>30&&inp.throttle>=0){
+      const dir=this.vel.x>12?1:this.vel.x<-12?-1:0;
+      const nearBank=dir>0?this.pos.x>bank.x0-26&&this.pos.x<bank.x0+24:this.pos.x<bank.x1+26&&this.pos.x>bank.x1-24;
+      if(dir&&nearBank&&Math.abs(this.vel.z)<Math.abs(this.vel.x)*.8){this.riverAssist=dir;this.riverLane=lane;this.hoverY=Math.max(9,Math.min(14,this.pos.y));}
+    }
     const hopEdge = inp.hop && !this.prevHop;
     this.prevHop = inp.hop;
     this.hopCd -= dt;
@@ -272,14 +299,19 @@ export class Vehicle {
         this.push('hop');
       } else this.warnEmpty();
     }
-    if (inp.hop && !this.grounded && this.airTime > 0.12) {
+    if ((inp.hop||this.riverAssist) && !this.grounded && this.airTime > 0.12) {
       if (this.air > 0) {
         const support=T.gravity+clamp((this.hoverY-this.pos.y)*6-this.vel.y*4.5,-T.gravity,16);
-        this.acc.addScaledVector(_up, support);
+        this.acc.addScaledVector(this.riverAssist?WORLD_UP:_up, support);
         this.air -= T.hoverCost * dt;
         downTarget = clamp(support/24,.15,1);
         this.lastThrust = this.time;
       } else this.warnEmpty();
+    }
+    if(this.riverAssist&&this.air>0){
+      this.acc.x+=this.riverAssist*clamp((58-this.vel.x*this.riverAssist)*.9,0,10);
+      this.acc.z+=clamp((this.riverLane-this.pos.z)*.08-this.vel.z*.4,-3,3)*(1-Math.min(1,Math.abs(inp.steer)));
+      this.air-=8*dt;mainTarget=Math.max(mainTarget,.5);this.lastThrust=this.time;
     }
     if (inp.boost) {
       if (this.air > 0) {
@@ -291,8 +323,8 @@ export class Vehicle {
         this.lastThrust = this.time;
       } else this.warnEmpty();
     }
-    if(!this.grounded&&inp.throttle>0&&this.air>0){
-      this.acc.addScaledVector(_fwd,4*inp.throttle);this.air-=8*dt;
+    if(!this.grounded&&inp.throttle>0&&this.air>0&&!this.riverAssist){
+      this.acc.addScaledVector(_fwd,8*inp.throttle);this.air-=8*dt;
       mainTarget=Math.max(mainTarget,.25*inp.throttle);this.lastThrust=this.time;
     }
     const rcs = Math.abs(this.rcsPitch) + Math.abs(this.rcsYaw) + Math.abs(this.rcsRoll);
@@ -347,7 +379,7 @@ export class Vehicle {
     }
 
     if (this.grounded) {
-      this.alignUp(this.groundN, this.snapAlign ? 1 : 1 - Math.exp(-(wasGrounded ? 18 : 10) * dt));
+      this.alignUp(this.groundN, this.snapAlign||!wasGrounded ? 1 : 1 - Math.exp(-18 * dt));
       this.snapAlign = false;
       this.mode = this.groundN.y > 0.7 ? 'ground' : this.groundN.y < -0.5 ? 'ceiling' : 'wall';
     } else this.mode = 'air';
@@ -383,6 +415,7 @@ export class Vehicle {
   }
 
   private sink(): void {
+    this.riverAssist=0;
     this.mode = 'sunk';
     this.respawnTimer = 1.5;
     this.vel.set(0, 0, 0);

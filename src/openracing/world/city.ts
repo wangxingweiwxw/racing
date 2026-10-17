@@ -1,14 +1,14 @@
 // 城市渲染：地面、道路标线、建筑（单个 InstancedMesh，立面窗格由着色器按世界坐标生成）、
 // 外滩屋顶、梧桐、路灯、霓虹招牌、黄浦江水面、夜空。
 import {
-  AdditiveBlending, BackSide, BoxGeometry, BufferAttribute, BufferGeometry, Color, ConeGeometry,
+  AdditiveBlending, BackSide, BoxGeometry, BufferAttribute, BufferGeometry, CanvasTexture, Color, ConeGeometry,
   CylinderGeometry, DoubleSide, Group, IcosahedronGeometry, InstancedBufferAttribute,
   InstancedMesh, Matrix4, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, PlaneGeometry,
   Quaternion, ShaderMaterial, SphereGeometry, UniformsLib, UniformsUtils, Vector3,
 } from 'three';
 import type { CubeTexture, Texture } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { BOUNDS, BUND, PUDONG_PROM_X1, RIVER, mulberry32 } from './layout.ts';
+import { BOUNDS, BUND, PUDONG_PROM_X1, RIVER, RIVER_CROSSINGS, mulberry32 } from './layout.ts';
 import type { Building, Layout, Street } from './layout.ts';
 import { paverTexture, radialTexture, signAtlas, wetRoughnessTexture } from './textures.ts';
 
@@ -341,15 +341,32 @@ export function buildCity(layout: Layout): City {
   wallE.position.set(RIVER.x1, -6, 0);
   group.add(wallW, wallE);
   const posts: Matrix4[] = [];
-  for (let z = -promLen / 2; z < promLen / 2; z += 2.5) posts.push(mat4(-0.5, BUND.promY + 0.55, z));
+  for (let z = -promLen / 2; z < promLen / 2; z += 2.5) if(!RIVER_CROSSINGS.some(lane=>Math.abs(z-lane)<12))posts.push(mat4(-0.5, BUND.promY + 0.55, z));
   group.add(instanced(new BoxGeometry(0.18, 1.1, 0.18), stone, posts));
-  const rail = new Mesh(new BoxGeometry(0.3, 0.12, promLen), stone);
-  rail.position.set(-0.5, BUND.promY + 1.12, 0);
-  group.add(rail);
+  let railStart=-promLen/2;
+  for(const end of [...RIVER_CROSSINGS.map(z=>z-12),promLen/2]){
+    const rail=new Mesh(new BoxGeometry(.3,.12,end-railStart),stone);
+    rail.position.set(-.5,BUND.promY+1.12,(railStart+end)/2);group.add(rail);railStart=end+24;
+  }
+
+  const guide=new MeshBasicMaterial({color:0x5ff1db});
+  const boardCanvas=document.createElement('canvas');boardCanvas.width=512;boardCanvas.height=256;
+  const bc=boardCanvas.getContext('2d')!;bc.fillStyle='#102d3c';bc.fillRect(0,0,512,256);bc.strokeStyle='#60f4d9';bc.lineWidth=10;bc.strokeRect(8,8,496,240);
+  bc.fillStyle='#73f6db';bc.textAlign='center';bc.font='bold 56px sans-serif';bc.fillText('跨江辅助',256,84);
+  bc.fillStyle='#ffffff';bc.font='32px sans-serif';bc.fillText('沿青色跳台加速',256,148);bc.font='26px sans-serif';bc.fillText('自动补气 · 离台托举',256,205);
+  const boardMat=new MeshBasicMaterial({map:new CanvasTexture(boardCanvas),side:DoubleSide});
+  for(const z of RIVER_CROSSINGS)for(const side of [-1,1]){
+    const x=side<0?-65:365,heading=-side;
+    const board=new Mesh(new PlaneGeometry(8,4),boardMat);board.position.set(x,5,z+13);board.rotation.y=side*Math.PI/2;group.add(board);
+    const pole=new Mesh(new BoxGeometry(.15,5,.15),stone);pole.position.set(x,2.5,z+13);group.add(pole);
+    for(const step of [0,12,24])for(const half of [-1,1]){
+      const arrow=new Mesh(new BoxGeometry(7,.035,.55),guide);arrow.position.set(side<0?-90+step:390-step,.045,z+half*2.3);arrow.rotation.y=heading*half*Math.PI/4;group.add(arrow);
+    }
+  }
 
   // 坡道
   const rampMat = new MeshStandardMaterial({ color: 0x9a9890, roughness: 0.8 });
-  const stripe = new MeshBasicMaterial({ color: new Color(0.95, 0.75, 0.15) });
+  const stripe = guide;
   for (const r of layout.ramps) {
     const dir = r.b.clone().sub(r.a);
     const len = dir.length();
@@ -368,8 +385,8 @@ export function buildCity(layout: Layout): City {
     group.add(g);
     // 跳台下方的支撑
     if (r.b.y - r.a.y > 3) {
-      const sup = new Mesh(new BoxGeometry(0.6, r.b.y - BUND.promY, r.width * 0.9), rampMat);
-      sup.position.set(r.b.x - 0.4, (r.b.y + BUND.promY) / 2, r.b.z);
+      const sup = new Mesh(new BoxGeometry(0.6, r.b.y - r.a.y, r.width * 0.9), rampMat);
+      sup.position.set(r.b.x - Math.sign(dir.x)*0.4, (r.b.y + r.a.y) / 2, r.b.z);
       group.add(sup);
     }
   }

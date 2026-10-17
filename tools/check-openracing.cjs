@@ -29,6 +29,29 @@ const origin=process.env.BASE_URL||'http://127.0.0.1:5178';
   await page.evaluate(()=>{const g=window.openracing;g.sim(4,{hop:false,action:false,throttle:0});g.frame();});
   assert.equal(await page.evaluate(()=>window.openracing.vehicle.mode),'ground');
   assert.equal(await page.evaluate(()=>window.openracing.vehicle.stuntRoll),0);
+  const landing=await page.evaluate(()=>{
+   const g=window.openracing;g.teleport(-420,14,0);g.vehicle.q.setFromAxisAngle(g.vehicle.pos.clone().set(1,0,0),.6);g.vehicle.vel.y=-20;
+   g.sim(4,{});g.camLocal([5,1.6,4]);g.frame(.05);g.car.root.updateMatrixWorld(true);
+   return {up:g.vehicle.up().y,tyres:g.car.wheels.map(w=>w.pivot.getWorldPosition(g.vehicle.pos.clone()).y-.37)};
+  });
+  assert.ok(landing.up>.9999&&landing.tyres.every(y=>y>=-.035),JSON.stringify(landing));
+  await page.screenshot({path:'checks/openracing/landing-fixed.png',timeout:120000});
+  const river=await page.evaluate(()=>{
+   const g=window.openracing,results=[];g.camLocal(null);
+   for(const heldLift of [false,true]){
+    g.teleport(-75,.75,0);g.sim(.5,{});g.vehicle.air=150;g.vehicle.vel.x=15;
+    let assisted=false,landed=false;
+    for(let i=0;i<260;i++){const across=g.vehicle.pos.x>315;g.sim(.05,{throttle:across?-1:1,hop:heldLift&&!across});assisted ||= !!g.vehicle.riverAssist;if(across&&g.vehicle.grounded){landed=true;break;}}
+    g.frame(.05);results.push({heldLift,assisted,landed,pos:g.vehicle.pos.toArray(),ships:g.cruises.ships.length});
+   }
+   return results;
+  });
+  assert.ok(river.every(r=>r.assisted&&r.landed&&r.ships===3),JSON.stringify(river));
+  await page.evaluate(()=>{const g=window.openracing;g.teleport(140,20,0);g.pause(true);g.camLocal([95,55,-140],[0,-10,130],55);g.frame();});
+  await page.screenshot({path:'checks/openracing/river-cruises.png',timeout:120000});
+  await page.evaluate(()=>{const g=window.openracing;const s=g.cruises.ships[2];g.teleport(s.root.position.x,10,s.root.position.z);g.car.root.visible=false;g.hud(false);g.camLocal([38,18,45],[0,-8,0],50);g.frame();});
+  await page.screenshot({path:'checks/openracing/cruise-detail.png',timeout:120000});
+  await page.evaluate(()=>{const g=window.openracing;g.car.root.visible=true;g.hud(true);g.teleport(-420,.75,0);g.camLocal(null);g.pause(false);g.sim(.5,{});g.frame();});
   // Pause/help must freeze simulation and clear held controls.
   await page.evaluate(()=>{const g=window.openracing;g.input.override=null;});
   await page.keyboard.down('w');await page.evaluate(()=>window.openracing.frame());
@@ -59,7 +82,7 @@ const origin=process.env.BASE_URL||'http://127.0.0.1:5178';
   await page.evaluate(()=>window.dispatchEvent(new Event('blur')));
   assert.equal(await page.evaluate(()=>window.openracing.input.touch.throttle),0);
   assert.deepEqual(errors,[]);
-  const result={result:'PASS',flight,errors,checks:'shared model, showcase, takeoff, roll, landing, pause, three mobile layouts, multi-touch, release'};
+  const result={result:'PASS',flight,landing,river,errors,checks:'shared model, showcase, takeoff, roll, tilted landing clearance, low-fuel river crossing, cruise fleet, pause, three mobile layouts, multi-touch, release'};
   fs.writeFileSync('checks/openracing/browser-result.json',JSON.stringify(result,null,2));console.log(JSON.stringify(result));
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});
