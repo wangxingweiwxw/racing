@@ -1,4 +1,29 @@
-/* U9 Xtreme race cockpit, arranged around the road like the supplied reference. */
+/* Shared U9 / Roadster cockpit. */
+.vehicle-option small { display: block; font-size: 10px; letter-spacing: .18em; color: #94c8dc; margin-bottom: 8px; }
+.vehicle-note { font-size: 12px; line-height: 1.7; color: #9cafc3; margin: 10px 0 0; }
+.vehicle-note a { color: #a4e5ff; margin-left: 8px; }
+#hud .flight-panel { position: absolute; left: 50%; bottom: 172px; transform: translateX(-50%); width: 230px; padding: 12px 15px; border: 1px solid #89bdd440; background: #06131cbd; border-radius: 6px; font-size: 12px; }
+#hud .flight-panel.active { border-color: #b8edff; box-shadow: 0 0 20px #8bdfff18; }
+#hud .flight-heading, #hud .flight-data { display: flex; justify-content: space-between; gap: 12px; }
+#hud .flight-heading b { letter-spacing: .16em; font-size: 10px; }
+#hud .flight-heading span { color: #bcf2ff; }
+#hud .flight-meter { height: 3px; background: #69829650; margin: 10px 0; }
+#hud .flight-meter i { display: block; width: 100%; height: 100%; background: #b9eaff; }
+#hud .flight-panel small { display: block; margin-top: 8px; color: #a6bac7; font-size: 10px; }
+#hud .touch .drive-lift { position: absolute; right: max(38px,env(safe-area-inset-right)); bottom: 215px; width: 64px; height: 64px; padding: 10px; border: 1px solid #bceeff80; border-radius: 14px; background: #081a2cb8; }
+#hud .drive-lift svg { height: 30px; }
+#hud .drive-lift span { font-size: 11px; }
+@media (max-height: 540px) and (orientation: landscape) {
+  #hud .flight-panel { bottom: 108px; width: 204px; padding: 8px 12px; }
+  #hud .flight-panel small { display: none; }
+  #hud .touch .drive-lift { bottom: 142px; right: 22px; width: 54px; height: 54px; padding: 5px; }
+}
+@media (max-width: 600px) and (orientation: portrait) {
+  #hud .flight-panel { bottom: 248px; width: 200px; }
+  #hud .touch .drive-lift { bottom: 248px; right: 10px; width: 48px; height: 48px; padding: 4px; }
+  #hud .drive-lift svg { height: 25px; }
+  #hud .flight-panel { left: 12px; transform: none; width: min(62vw,230px); }
+}
 #hud { --u: clamp(.65px, .075vw, 1.15px); color: #f7fbff; font-family: 'Barlow Condensed', 'Arial Narrow', sans-serif; text-shadow: 0 2px 7px #0009; }
 #hud .race-vignette { position: absolute; inset: 0; background: linear-gradient(180deg,#04111a35,transparent 28%,transparent 72%,#02091050); }
 #hud button { font: inherit; color: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: none; }

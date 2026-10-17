@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 //
-// Race state: port of Open Street Kart scripts/track_state.gd (modes, speed modes,
+// Race state: port of Open Street Kart scripts/track_state.gd (modes,
 // live ranking, item slots, race end) and prefabs/player_spawner.gd (grid, countdown).
 import * as THREE from "three";
 import { carOverlap } from "./carCollision";
@@ -13,28 +13,9 @@ import { AirBomb, EXPLOSION_DURATION_SECONDS, EXPLOSION_RADIUS, GameMode, Player
 import { Kart } from "./kart";
 import { KartLook, KartModel } from "./kartModel";
 import { GameAudio } from "../audio";
+import { recordSuffix, vehicleMaxSpeedMps, type VehicleId } from "./vehicles";
 
-export enum SpeedMode {
-  CHILL,
-  CASUAL,
-  CHALLENGING,
-  CRAZY,
-}
-
-/** OSK TrackSpeedDict (m/s) */
-export const TRACK_SPEED: Record<SpeedMode, number> = {
-  [SpeedMode.CHILL]: 25,
-  [SpeedMode.CASUAL]: 30,
-  [SpeedMode.CHALLENGING]: 35,
-  [SpeedMode.CRAZY]: 40,
-};
-/** OSK OutOfBoundsSpeedDict (m/s), raised for the faster verges of real circuits */
-export const OUT_OF_BOUNDS_SPEED: Record<SpeedMode, number> = {
-  [SpeedMode.CHILL]: 6 * 1.8,
-  [SpeedMode.CASUAL]: 8 * 1.8,
-  [SpeedMode.CHALLENGING]: 9 * 1.8,
-  [SpeedMode.CRAZY]: 11 * 1.8,
-};
+const OUT_OF_BOUNDS_SPEED = 11 * 1.8;
 
 export interface Course {
   /** unique across tracks: best times and ghosts are stored per course id */
@@ -82,8 +63,8 @@ const LIVERIES: KartLook[] = [
 export const PLAYER_COLORS = [0xe63946, 0x1e64c8, 0xffbe0b, 0x2a9d8f, 0x8338ec, 0xf4f4f4, 0x111111, 0xff7b00];
 
 export interface RaceOptions {
+  vehicle?: VehicleId;
   mode: GameMode;
-  speed: SpeedMode;
   course: Course;
   playerColor: number;
   bots: number;
@@ -135,7 +116,6 @@ export class Race {
     scene.traverse((o) => {
       if (o.name.startsWith("start-lamp-")) this.startLamps.push(o as THREE.Mesh);
     });
-    const maxSpeed = TRACK_SPEED[opts.speed];
     const nBots = opts.mode === GameMode.VERSUS ? opts.bots : 0;
     // grid: OSK PlayerSpawner places karts in two columns behind the line
     const total = nBots + 1;
@@ -148,12 +128,16 @@ export class Race {
       const s = opts.course.startS - 6 - row * 8 - (col > 0 ? 3 : 0);
       const lat = col * 2.4;
       const kart = new Kart(track);
+      const vehicle = isPlayer ? opts.vehicle ?? "u9x" : "u9x";
+      kart.flightEnabled = vehicle === "roadster";
+      if (kart.flightEnabled) { kart.halfWidth = 1.08; kart.halfLength = 2.4; }
+      const maxSpeed = vehicleMaxSpeedMps(vehicle);
       kart.maxSpeed = maxSpeed;
-      kart.outOfBoundsSpeed = OUT_OF_BOUNDS_SPEED[opts.speed];
+      kart.outOfBoundsSpeed = OUT_OF_BOUNDS_SPEED;
       kart.accel = 8 + maxSpeed * 0.12;
       kart.placeAt(track.wrapS(s), lat, track.deltaS(opts.course.startS, track.wrapS(s)));
       const look: KartLook = isPlayer ? { color: opts.playerColor, accent: 0x15171c, helmet: 0xf2f2f2, number: 1 } : LIVERIES[(botIdx + 1) % LIVERIES.length];
-      const model = new KartModel(look, isPlayer);
+      const model = new KartModel(look, isPlayer, vehicle);
       this.group.add(model.root);
       let brain: Brain;
       let name: string;
@@ -161,7 +145,7 @@ export class Race {
         brain = new UserBrain(controls);
         name = "你";
       } else {
-        const skill = 0.86 + ((botIdx * 37) % 11) / 100 + (opts.speed === SpeedMode.CRAZY ? 0.02 : 0);
+        const skill = 0.86 + ((botIdx * 37) % 11) / 100;
         brain = new BotBrain(track, maxSpeed, Math.min(1, skill), (botIdx % 3) - 1);
         kart.maxSpeed = maxSpeed * (0.965 + skill * 0.03);
         name = BOT_NAMES[botIdx % BOT_NAMES.length];
@@ -193,8 +177,10 @@ export class Race {
   }
 
   get ghostKey() {
-    return `nk-ghost-${this.opts.course.id}-${this.opts.speed}`;
+    return `nk-ghost-${this.recordId}`;
   }
+
+  get recordId() { return `${this.opts.course.id}${recordSuffix(this.opts.vehicle)}`; }
 
   private loadGhost() {
     try {
@@ -202,7 +188,8 @@ export class Race {
       if (!raw) return;
       const d = JSON.parse(raw) as { t: number[]; p: number[] };
       const frames: GhostFrame[] = d.t.map((t, k) => ({ t, x: d.p[k * 4] / 10, y: d.p[k * 4 + 1] / 10, z: d.p[k * 4 + 2] / 10, h: d.p[k * 4 + 3] / 1000 }));
-      const model = new KartModel({ color: 0x9fd8ff, accent: 0x9fd8ff, helmet: 0xffffff, number: 0 }, false);
+      if (frames.length < 2) return;
+      const model = new KartModel({ color: 0x9fd8ff, accent: 0x9fd8ff, helmet: 0xffffff, number: 0 }, false, this.opts.vehicle);
       model.dispose();
       const ghostMaterial = new THREE.MeshBasicMaterial({ color: 0x9fd8ff, transparent: true, opacity: 0.32, depthWrite: false });
       model.root.traverse((o) => {
@@ -558,7 +545,7 @@ export class Race {
         s.bounce += s.vb * dt;
         if (k.offTrack && k.grounded) s.vb += (Math.random() - 0.5) * k.speed * 0.08;
       }
-      r.model.animate(dt, k.forwardSpeed, r.brain.input.steer * (k.spin > 0 ? 0 : 1), s.pitch, s.roll, s.bounce);
+      r.model.animate(dt, k.forwardSpeed, r.brain.input.steer * (k.spin > 0 ? 0 : 1), s.pitch, s.roll, s.bounce, k.thrusterActive);
       // effects
       if (dt > 0) this.kartFx(r, dt);
     }
@@ -608,7 +595,7 @@ export class Race {
 
   bestTime(): number {
     try {
-      const v = localStorage.getItem(`nk-best-${this.opts.course.id}-${this.opts.speed}`);
+      const v = localStorage.getItem(`nk-best-${this.recordId}`);
       return v ? parseFloat(v) : -1;
     } catch {
       return -1;
@@ -618,7 +605,7 @@ export class Race {
   private saveBest(t: number) {
     try {
       const b = this.bestTime();
-      if (b < 0 || t < b) localStorage.setItem(`nk-best-${this.opts.course.id}-${this.opts.speed}`, String(t));
+      if (b < 0 || t < b) localStorage.setItem(`nk-best-${this.recordId}`, String(t));
     } catch {
       /* ignore */
     }

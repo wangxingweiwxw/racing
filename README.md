@@ -60,12 +60,43 @@ Cloudflare 凭据由 Wrangler 保存在本机，不应提交到仓库。
 
 ## 玩法
 
+### Tesla Roadster 2 飞行概念车
+
+在「赛事设置 → 选择座驾」切换 Tesla Roadster 2 或原有仰望 U9 Xtreme。
+也可打开 `?track=shanghai&vehicle=roadster` 预选新车。
+新增模型由 `src/race/roadsterModel.ts` 按用户提供的 `6258.mp4` 原创重建：白色楔形车身、
+连续黑色玻璃顶、窄侧窗、后翼子板三角面、梯形黑色尾板、贯穿红灯和白色贴合式尾翼。
+四轮独立转向与旋转，喷口收进底盘；独立户外反射环境避免玻璃出现室内灯带。
+选择 Roadster 时默认视频同款白色，仍可使用现有色板换色。
+
+Roadster 按住 **空格 / 手柄 LB / 屏幕悬浮按钮** 升空；WASD 仍负责驾驶。
+松开或推进剂耗尽后自动降落。满槽可供约 4 秒动力悬浮，目标高度约 3.5 m；
+落地并松开悬浮键后约 10 秒充满，至少 25% 才能起飞。悬浮保留赛道走廊边界，
+不支持跨地图自由飞行。HUD 显示推进剂、离地高度和状态；成绩、分段及幽灵车
+两款车的成绩、分段及幽灵车分别保存，AI 继续驾驶 U9，可与 Roadster 同场。
+
+独立模型位于 `public/models/roadster/roadster.glb`，可用 Blender 等软件打开；
+修改程序化几何后运行 `npm run model:roadster` 重新导出。游戏直接使用同一几何源。
+
+目前外观以用户视频为主要依据，替代初版仅根据网络描述进行的推测。
+视频主要展示后视、侧后视和侧面；车头与底盘仍有未展示细节，属于视觉近似，并非官方 CAD。
+飞行高度、持续时间与恢复速度为街机设定，不代表实车指标。赛道最高车速按车型公开指标设定。
+来源及限制见 [建模参考](public/models/roadster/REFERENCE.md)。
+
+`npm run test:car` 同时验证两条赛道在 30/60/120 Hz 下的升空、耗尽、落地和恢复。
+启动开发服务器后，可运行 `node tools/check-roadster.cjs` 验证画面、选择车型、
+键盘与触控悬浮、暂停、八车同场和手机布局；`PLAYWRIGHT_MODULE` 的配置同下。
+
+模型对比：开发服务器下打开 `/tools/roadster-preview.html`，使用同一游戏模型与反射材质
+检查后视、侧后视、侧面和车头。`node tools/render-roadster.cjs <轮次名>` 保存固定角度截图；
+基线与迭代记录位于本地 `checks/roadster-video/`。视频及抽帧不打包进公开游戏资源。
+
 ### 仰望 U9 Xtreme 车型与界面
 
 默认车型已替换为 `gd_yangwang_u9` 中的 U9 Xtreme：保留原车身、尾翼、驾驶舱、
 轮毂和灯组，使用 `red_met` 纯红涂装，重新映射碳纤维、玻璃与车漆材质。
 四轮随车速旋转，前轮随转向偏转，刹车灯随减速增强；追尾/远景/车头镜头和碰撞尺寸均已适配。
-驾驶仍采用项目原有的街机物理与速度档位，不代表实车性能或神力科莎物理模拟。
+驾驶仍采用街机物理；仅最高车速按车型设置，不代表实车圈速或神力科萨物理模拟。
 
 比赛界面采用左上排名和计时、右上圆形地图、中央底部数字车速与速度条。
 右下刹车采用灰色三横槽踏板，与右侧油门水平并排；转向、油门、刹车支持鼠标及多点触控。
@@ -99,8 +130,8 @@ npm run test:car
 | 项目 | 内容 |
 | --- | --- |
 | 模式 | 对手赛（Versus，3/5/7 个 AI）、计时赛（Against Clock，幽灵车）、自由驾驶 |
-| 速度档位 | OSK 的 Chill / Casual / Challenging / Crazy：90 / 108 / 126 / 144 km/h |
-| 赛段 | 北环：全圈（T13 → T13），或四个分段：Hatzenbach、Adenauer Forst、Bergwerk、Hohe Acht 起点；上海：1 / 3 / 5 圈赛（HUD 显示圈数，结算显示单圈用时） |
+| 车型极速 | 仰望 U9 Xtreme：[496.22 km/h](https://www.byd.com/mea/news-list/yangwang-u9-xtreme-is-the-worlds-fastest-production-car-with-top-speed-of-496kmh)（实测纪录）；Tesla Roadster 2：[超过 230 mph](https://live.euronext.com/en/financial-news/tesla-unveils-next-generation-roadster-sports-ev-spacex-thrusters)，游戏以 370.15 km/h（230 mph 换算值）设定 |
+| 速度限制 | 移除四档选择；赛道内按当前车型极速封顶。离开赛道仍保留较低的街机惩罚限速 |
 | 道具 | 空投炸弹（16 m 爆炸半径）；落后越多补给越快 |
 | 其他 | 每 250 m 检查点、按路段 / 弯角分段计时（北环 42 段、上海 15 段）、个人最佳与路段对比、小地图、海拔剖面进度条 |
 
@@ -113,9 +144,9 @@ OSK 是 Godot 4.6 桌面工程，依赖 Terrain3D、Debug Draw 3D 等原生扩�
 | OSK 源文件 | 本项目 |
 | --- | --- |
 | `prefabs/car_custom_physics_2.gd` | `src/race/kart.ts`：油门/刹车、停车长按倒车、轮胎侧向抓地、空中操控削弱、前进软限速、倒车硬限速、越界限速 |
-| `scripts/track_state.gd`, `prefabs/player_spawner.gd` | `src/race/race.ts`：速度档位表、模式、发车格、倒计时、实时排名、比赛结束 |
 | `scripts/player_item_slots_state.gd`, `prefabs/items/air_bomb.gd` | `src/race/items.ts`：三格道具槽、补给时间、空投炸弹 |
-| `prefabs/ai/race_path*`, BotBrain | `src/race/brain.ts`：沿赛车线行驶的 AI |
+| scripts/track_state.gd, prefabs/player_spawner.gd | src/race/race.ts: 车型极速、模式、发车格、倒计时、实时排名、比赛结束 |
+| prefabs/ai/race_path*, BotBrain | src/race/brain.ts: 沿赛车线行驶的 AI |
 | `prefabs/track_checkpoint.gd` | `Kart.checkpointS` / `respawn()` |
 | `scripts/osm_data_generator.gd`, `prefabs/map_data_loader.gd` | `tools/build_data.py` + `src/world/*`：OSM → 道路、建筑、地表纹理绘制 |
 | `TrackState._update_camera` | `src/race/camera.ts` |

@@ -15,13 +15,14 @@ export interface Brain {
 
 export class Controls {
   keys = new Set<string>();
-  touch = { steer: 0, throttle: 0, brake: 0, item: false };
+  touch = { steer: 0, throttle: 0, brake: 0, item: false, lift: false };
   onBrakeRelease: () => void = () => {};
   private pressed = new Set<string>();
 
   constructor() {
     addEventListener("keydown", (e) => {
       if (e.repeat) return;
+      if (e.code === "Space" && document.querySelector("#hud:not(.hidden)")) e.preventDefault();
       this.keys.add(e.code);
       this.pressed.add(e.code);
     });
@@ -86,6 +87,7 @@ export class UserBrain implements Brain {
     const rate = steerRaw === 0 ? 9 : Math.sign(steerRaw) !== Math.sign(this.steerSmoothed) ? 12 : 5.5;
     this.steerSmoothed += (steerRaw - this.steerSmoothed) * (1 - Math.exp(-dt * rate));
     this.input.throttle = thr;
+    this.input.lift = k.has("Space") || t.lift || !!pad?.buttons[4]?.pressed;
     this.input.steer = Math.abs(steerRaw) < 1 && pad ? steerRaw : this.steerSmoothed;
     this.useItem = item;
   }

@@ -10,6 +10,7 @@ export function buildTouch(host: HTMLElement, c: Controls) {
     const down = (key: string) => (held.get(key)?.size ?? 0) > 0;
     c.touch.steer = Number(down("right")) - Number(down("left"));
     c.touch.throttle = Number(down("pedal"));
+    c.touch.lift = down("lift");
     const brake = Number(down("brake"));
     if (c.touch.brake && !brake) c.onBrakeRelease();
     c.touch.brake = brake;
@@ -33,6 +34,9 @@ export function buildTouch(host: HTMLElement, c: Controls) {
   host.append(pedals);
   button("brake", "刹车 · 停稳长按 2 秒倒车（最高 5 km/h）· S", pedals);
   button("pedal", "加速 · W", pedals);
+  button("lift", "按住悬浮，松开降落 · 空格 / LB", host);
+  const lift = host.querySelector(".drive-lift")!;
+  lift.append(h("span", {}, "悬浮"));
   const clear = () => { for (const ids of held.values()) ids.clear(); buttons.forEach((el) => el.classList.remove("active")); c.touch.item = false; update(); };
   addEventListener("blur", clear);
   document.addEventListener("visibilitychange", () => { if (document.hidden) clear(); });

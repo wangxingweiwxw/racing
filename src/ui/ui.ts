@@ -1,14 +1,15 @@
-// DOM user interface: OSK gui/screens (home, pick mode, pick speed, pick track,
+// DOM user interface: OSK gui/screens (home, pick mode, pick track,
 // credits), race HUD and race finished GUI, rebuilt as a responsive web UI.
 import "./style.css";
 import "./race-hud.css";
 import { icon } from "./icons";
 import { Track } from "../track";
-import { Course, PLAYER_COLORS, Race, Racer, SpeedMode, TRACK_SPEED } from "../race/race";
+import { Course, PLAYER_COLORS, Race, Racer } from "../race/race";
 import { GameMode, SlotItem } from "../race/items";
 import { BASE } from "../world/assets";
 import { Settings } from "../settings";
 import { TrackInfo, TRACKS, switchTrack } from "../tracks";
+import { VEHICLES, recordSuffix, type VehicleId } from "../race/vehicles";
 
 type Attrs = Record<string, string | number | boolean | ((e: Event) => void)>;
 export function h(tag: string, attrs: Attrs = {}, ...kids: (Node | string | null | undefined | false)[]): HTMLElement {
@@ -36,16 +37,9 @@ const modeInfo = (info: TrackInfo): { mode: GameMode; t: string; d: string }[] =
   { mode: GameMode.AGAINST_CLOCK, t: "计时赛", d: "挑战个人最佳并与幽灵车对抗（OSK Against Clock）" },
   { mode: GameMode.FREE, t: "自由驾驶", d: info.freeModeDesc },
 ];
-const SPEED_INFO: { speed: SpeedMode; t: string }[] = [
-  { speed: SpeedMode.CHILL, t: "Chill" },
-  { speed: SpeedMode.CASUAL, t: "Casual" },
-  { speed: SpeedMode.CHALLENGING, t: "Challenging" },
-  { speed: SpeedMode.CRAZY, t: "Crazy" },
-];
-
 export interface SetupChoice {
+  vehicle: VehicleId;
   mode: GameMode;
-  speed: SpeedMode;
   course: Course;
   color: number;
   bots: number;
@@ -89,8 +83,8 @@ export class UI {
     this.track = track;
     this.courses = courses;
     this.choice = {
+      vehicle: "u9x",
       mode: GameMode.VERSUS,
-      speed: SpeedMode.CASUAL,
       course: courses.find((c) => c.id === this.info.defaultCourse) ?? courses[0],
       color: PLAYER_COLORS[0],
       bots: 7,
@@ -98,8 +92,8 @@ export class UI {
     try {
       const saved = JSON.parse(localStorage.getItem("nk-choice") || "null");
       if (saved) {
+        this.choice.vehicle = saved.vehicle === "roadster" ? "roadster" : "u9x";
         this.choice.mode = saved.mode ?? this.choice.mode;
-        this.choice.speed = saved.speed ?? this.choice.speed;
         this.choice.color = saved.color ?? this.choice.color;
         this.choice.bots = saved.bots ?? this.choice.bots;
       }
@@ -108,6 +102,11 @@ export class UI {
       this.choice.course = courses.find((c) => c.id === course) ?? this.choice.course;
     } catch {
       /* first visit */
+    }
+    const vehicleParam = new URLSearchParams(location.search).get("vehicle");
+    if (vehicleParam === "roadster" || vehicleParam === "u9x") {
+      this.choice.vehicle = vehicleParam;
+      if (vehicleParam === "roadster") this.choice.color = 0xf4f4f4;
     }
   }
 
@@ -139,9 +138,9 @@ export class UI {
       h(
         "div",
         { class: "title-block" },
-        h("div", { class: "kicker" }, "YANGWANG PERFORMANCE · " + info.label),
+        h("div", { class: "kicker" }, "U9 XTREME × ROADSTER 2 · " + info.label),
         h("div", { class: "brand" }, h("span", { class: "b1" }, "仰望 U9"), h("span", { class: "b2" }, "XTREME")),
-        h("p", { class: "tagline" }, info.tagline),
+        h("p", { class: "tagline" }, "新增 Tesla Roadster 2 飞行概念车 · 进入赛事设置选择车型"),
         h(
           "div",
           { class: "chips" },
@@ -224,17 +223,17 @@ export class UI {
     this.show("none");
   }
 
-  // ------------------------------------------------------------------ setup (OSK pick mode / speed / track)
-  private setupEls: { modes: HTMLElement; speeds: HTMLElement; courses: HTMLElement; colors: HTMLElement; bots: HTMLElement; botsGroup: HTMLElement } | null = null;
+  // ------------------------------------------------------------------ setup (OSK pick mode / track)
+  private setupEls: { vehicles: HTMLElement; modes: HTMLElement; courses: HTMLElement; colors: HTMLElement; bots: HTMLElement; botsGroup: HTMLElement } | null = null;
 
   private buildSetup(): HTMLElement {
+    const vehicles = h("div", { class: "opts vehicle-options" });
     const modes = h("div", { class: "opts" });
-    const speeds = h("div", { class: "opts" });
     const courses = h("div", { class: "opts" });
     const colors = h("div", { class: "swatches" });
     const bots = h("div", { class: "opts" });
     const botsGroup = h("div", { class: "group" }, h("label", {}, "对手数量"), bots);
-    this.setupEls = { modes, speeds, courses, colors, bots, botsGroup };
+    this.setupEls = { vehicles, modes, courses, colors, bots, botsGroup };
     const s = h(
       "div",
       { class: "screen scrim hidden", id: "setup" },
@@ -243,8 +242,11 @@ export class UI {
         { class: "panel" },
         h("h2", {}, "赛事设置"),
         h("p", { class: "sub" }, this.info.setupSub),
+        h("div", { class: "group" }, h("label", {}, "选择座驾"), vehicles,
+          h("p", { class: "vehicle-note" }, "Roadster 按参考视频重建外观；悬浮高度、时长与恢复速度为街机设定。两款车分别记录成绩。",
+            h("a", { href: `${BASE}models/roadster/REFERENCE.md`, target: "_blank", rel: "noopener" }, "建模参考 ↗"))),
         h("div", { class: "group" }, h("label", {}, "模式"), modes),
-        h("div", { class: "group" }, h("label", {}, "速度档位 · 来自 OSK"), speeds),
+        h("div", { class: "group vehicle-speed-note" }, h("label", {}, "车型极速"), h("p", { class: "sub" }, "各车型使用对应最高时速；赛道驾驶表现仍受弯道、抓地力和路况影响。")),
         h("div", { class: "group" }, h("label", {}, this.courses.some((co) => co.laps > 1) ? "圈数" : "赛段"), courses),
         botsGroup,
         h("div", { class: "group" }, h("label", {}, "车身颜色"), colors),
@@ -263,26 +265,21 @@ export class UI {
   private refreshSetup() {
     const e = this.setupEls!;
     const c = this.choice;
+    e.vehicles.replaceChildren(...(Object.keys(VEHICLES) as VehicleId[]).map(id => {
+      const v = VEHICLES[id];
+      return h("button", { class: `opt vehicle-option ${c.vehicle === id ? "on" : ""}`, "data-vehicle": id, "aria-pressed": c.vehicle === id ? "true" : "false", onclick: () => { if (c.vehicle !== id && id === "roadster") c.color = 0xf4f4f4; c.vehicle = id; this.refreshSetup(); } },
+        h("small", {}, v.brand), h("div", { class: "t" }, v.name), h("div", { class: "d" }, v.description));
+    }));
     e.modes.replaceChildren(
       ...modeInfo(this.info).map((m) =>
         h("button", { class: `opt ${c.mode === m.mode ? "on" : ""}`, onclick: () => ((c.mode = m.mode), this.refreshSetup()) }, h("div", { class: "t" }, m.t), h("div", { class: "d" }, m.d)),
-      ),
-    );
-    e.speeds.replaceChildren(
-      ...SPEED_INFO.map((sp) =>
-        h(
-          "button",
-          { class: `opt ${c.speed === sp.speed ? "on" : ""}`, onclick: () => ((c.speed = sp.speed), this.refreshSetup()) },
-          h("div", { class: "t" }, sp.t),
-          h("div", { class: "n" }, `${Math.round(TRACK_SPEED[sp.speed] * 3.6)} km/h`),
-        ),
       ),
     );
     e.courses.replaceChildren(
       ...this.courses.map((co) => {
         let best = -1;
         try {
-          best = parseFloat(localStorage.getItem(`nk-best-${co.id}-${c.speed}`) || "-1");
+          best = parseFloat(localStorage.getItem(`nk-best-${co.id}${recordSuffix(c.vehicle)}`) || "-1");
         } catch {
           best = -1;
         }
@@ -313,7 +310,7 @@ export class UI {
 
   private start() {
     try {
-      localStorage.setItem("nk-choice", JSON.stringify({ mode: this.choice.mode, speed: this.choice.speed, course: this.choice.course.id, color: this.choice.color, bots: this.choice.bots }));
+      localStorage.setItem("nk-choice", JSON.stringify({ vehicle: this.choice.vehicle, mode: this.choice.mode, course: this.choice.course.id, color: this.choice.color, bots: this.choice.bots }));
       localStorage.setItem(`nk-course-${this.info.id}`, this.choice.course.id);
     } catch {
       /* ignore */
@@ -339,6 +336,7 @@ export class UI {
           row("刹车 / 倒车", "S", "↓"),
           row("转向", "A", "D"),
           row("使用道具", "E", "F"),
+          row("Roadster 悬浮（按住）", "Space", "LB"),
           row("回到检查点", "R"),
           row("切换视角", "C"),
           row("回看", "Q"),
@@ -354,6 +352,8 @@ export class UI {
           "沿赛道行驶，越过终点线即完成赛段或比赛。驶出沥青后会被限速（OSK 的越界速度），撞护栏会损失速度。",
           h("br"),
           "倒车：车速归零后持续按住刹车 2 秒进入 R 挡，继续按住即可倒车，最高 5 km/h。松开刹车会重置计时，踩油门可恢复前进。",
+          h("br"),
+          "Roadster：按住空格 / 手柄 LB / 屏幕悬浮按钮短时升空，WASD 继续控制。松开或推进剂耗尽后自动降落；落地松开悬浮键恢复推进剂，至少 25% 才能再次起飞。悬浮限制在赛道走廊内。",
           h("br"),
           "道具（对手赛）：落后越多补给越快；空投炸弹抛向前方，16 m 范围内的车会被掀起。",
           h("br"),
@@ -515,7 +515,12 @@ Three.js、Vite、TypeScript。声音由 Web Audio 实时合成，未使用音�
         h("button", { class: "hud-tool", "aria-label": "暂停与设置", title: "暂停 · Esc", onclick: () => this.onPause(), html: icon("settings") }),
         h("button", { class: "hud-tool", "aria-label": "切换视角", title: "切换视角 · C", onclick: () => this.onCamera(), html: icon("camera") }),
         h("button", { class: "hud-tool", "aria-label": "回到检查点", title: "回到检查点 · R", onclick: () => this.onRespawn(), html: icon("reset") })),
-      h("div", { class: "vehicle-badge" }, h("span", {}, "YANGWANG"), h("b", {}, "U9 X"), h("small", {}, "XTREME")),
+      h("div", { class: "vehicle-badge", id: "vehicle-badge" }),
+      h("div", { class: "flight-panel hidden", id: "flight-panel" },
+        h("div", { class: "flight-heading" }, h("b", {}, "COLD GAS"), h("span", { id: "flight-state" }, "READY")),
+        h("div", { class: "flight-meter", role: "progressbar", "aria-label": "推进剂余量", "aria-valuemin": "0", "aria-valuemax": "100", id: "flight-meter" }, h("i", { id: "flight-fill" })),
+        h("div", { class: "flight-data" }, h("span", { id: "flight-charge" }), h("span", { id: "flight-alt" })),
+        h("small", {}, "按住 SPACE / LB 悬浮 · 松开降落")),
       h("div", { class: "hud-br" },
         h("div", { class: "speedo" }, this.speedCanvas,
           h("div", { class: "speedo-readout" }, slots, h("span", { class: "v", id: "speed" }, "000"), h("span", { class: "u" }, "km/h"), h("span", { class: "gear", id: "gear" }, "D")),
@@ -528,7 +533,7 @@ Three.js、Vite、TypeScript。声音由 Web Audio 实时合成，未使用音�
       h("div", { class: "warn hidden", id: "warn" }, "逆行！按 R 回到检查点"),
       h("div", { id: "fps" }));
     this.root.append(this.hud);
-    for (const id of ["pos", "pos-of", "pos-card", "time", "best", "delta", "sector", "remain", "standings", "speed", "alt", "grade", "center", "toast", "warn", "slots", "fps", "hint", "gear", "race-progress", "reverse-status"]) this.els[id] = this.hud.querySelector(`#${id}`)!;
+    for (const id of ["vehicle-badge", "flight-panel", "flight-state", "flight-meter", "flight-fill", "flight-charge", "flight-alt", "pos", "pos-of", "pos-card", "time", "best", "delta", "sector", "remain", "standings", "speed", "alt", "grade", "center", "toast", "warn", "slots", "fps", "hint", "gear", "race-progress", "reverse-status"]) this.els[id] = this.hud.querySelector(`#${id}`)!;
     this.touchHost = h("div", { class: "touch" });
     this.hud.append(this.touchHost);
   }
@@ -539,6 +544,10 @@ Three.js、Vite、TypeScript。声音由 Web Audio 实时合成，未使用音�
   }
 
   prepareHud(race: Race) {
+    const v = VEHICLES[race.opts.vehicle ?? "u9x"];
+    this.els["vehicle-badge"].replaceChildren(h("span", {}, v.brand), h("b", {}, v.badge), h("small", {}, v.trim));
+    this.els["flight-panel"].classList.toggle("hidden", !race.player.kart.flightEnabled);
+    this.touchHost.querySelector(".drive-lift")?.classList.toggle("hidden", !race.player.kart.flightEnabled);
     this.mapBase = null;
     this.profBase = null;
     this.lastSector = "";
@@ -707,6 +716,15 @@ Three.js、Vite、TypeScript。声音由 Web Audio 实时合成，未使用音�
     const lap = co.laps > 1 ? `第 ${Math.min(co.laps, p.lapTimes.length + 1)}/${co.laps} 圈 · ` : "";
     this.els.remain.textContent = `${lap}剩余 ${(remain / 1000).toFixed(2)} km · ${camLabel}`;
     // speed
+    if (k.flightEnabled) {
+      const charge = Math.round(k.flightCharge * 100);
+      this.els["flight-fill"].style.width = `${charge}%`;
+      this.els["flight-meter"].setAttribute("aria-valuenow", String(charge));
+      this.els["flight-charge"].textContent = `${charge}% 推进剂`;
+      this.els["flight-alt"].textContent = `${k.flightHeight.toFixed(1)} m 离地`;
+      this.els["flight-state"].textContent = k.thrusterActive ? "悬浮中" : !k.grounded ? "降落中" : charge < 25 ? "恢复中" : "就绪";
+      this.els["flight-panel"].classList.toggle("active", k.thrusterActive);
+    }
     const kmh = Math.round(k.speed * 3.6);
     this.els.speed.textContent = String(kmh).padStart(3, "0");
     this.els.gear.textContent = k.goingBackwards ? "R" : "D";
@@ -777,7 +795,7 @@ Three.js、Vite、TypeScript。声音由 Web Audio 实时合成，未使用音�
 
   bestSplits(race: Race): number[] | null {
     try {
-      return JSON.parse(localStorage.getItem(`nk-splits-${race.opts.course.id}-${race.opts.speed}`) || "null");
+      return JSON.parse(localStorage.getItem(`nk-splits-${race.recordId}`) || "null");
     } catch {
       return null;
     }

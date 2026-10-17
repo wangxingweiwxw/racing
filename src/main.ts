@@ -15,6 +15,7 @@ import { GameAudio } from "./audio";
 import { UI, SetupChoice } from "./ui/ui";
 import { buildTouch } from "./ui/touch";
 import { loadCarModels } from "./race/kartModel";
+import { prepareRoadsterEnvironment } from "./race/roadsterEnvironment";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { loadSettings, saveSettings } from "./settings";
 import { currentTrack } from "./tracks";
@@ -51,7 +52,7 @@ async function boot() {
   const settings = loadSettings();
   const info = currentTrack();
   const DATA = `${BASE}data/${info.id}/`;
-  document.title = `仰望 U9 Xtreme · ${info.label}`;
+  document.title = `U9 Xtreme × Roadster 2 · ${info.label}`;
   const canvas = document.getElementById("view") as HTMLCanvasElement;
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: settings.quality > 0, powerPreference: "high-performance" });
   const applyPixelRatio = () => renderer.setPixelRatio(Math.min(devicePixelRatio, settings.quality === 2 ? 2 : settings.quality === 1 ? 1.5 : 1));
@@ -145,6 +146,7 @@ async function boot() {
   scene.environment = pmrem.fromScene(studio, 0.04).texture;
   studio.dispose();
   pmrem.dispose();
+  prepareRoadsterEnvironment(renderer);
 
   ui.setLoading(0.92, "编译着色器…");
   await tick();
@@ -210,7 +212,7 @@ async function boot() {
     audio.start();
     lastChoice = c;
     if (race) race.dispose(scene);
-    race = new Race(track, { mode: c.mode, speed: c.speed, course: c.course, playerColor: c.color, bots: c.bots }, controls, audio, scene);
+    race = new Race(track, { mode: c.mode, course: c.course, playerColor: c.color, bots: c.bots, vehicle: c.vehicle }, controls, audio, scene);
     prevBest = race.bestTime();
     finishT = -1;
     resultsShown = false;
@@ -220,7 +222,7 @@ async function boot() {
       const t = r.player.finishTime;
       if (prevBest < 0 || t < prevBest) {
         try {
-          localStorage.setItem(`nk-splits-${r.opts.course.id}-${r.opts.speed}`, JSON.stringify(r.player.splits));
+          localStorage.setItem(`nk-splits-${r.recordId}`, JSON.stringify(r.player.splits));
         } catch {
           /* ignore */
         }

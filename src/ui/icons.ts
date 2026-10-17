@@ -1,4 +1,5 @@
 const paths: Record<string, string> = {
+  lift: '<path d="m18 29 14-18 14 18M32 12v32M15 47l-4 9m21-6v9m17-12 4 9"/>',
   left: '<path d="M39 12 20 32l19 20"/>',
   right: '<path d="m25 12 19 20-19 20"/>',
   pedal: '<path d="M24 10h18v38l7 5v4H16v-7l8-5Z"/><path d="M30 17v22m6-22v22"/>',

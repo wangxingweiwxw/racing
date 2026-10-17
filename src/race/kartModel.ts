@@ -3,6 +3,9 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { BASE, canvasTexture } from "../world/assets";
+import { buildRoadster } from "./roadsterModel";
+import { roadsterEnvironment } from "./roadsterEnvironment";
+import type { VehicleId } from "./vehicles";
 
 export interface KartLook { color: number; accent: number; helmet: number; number: number }
 let highModel: THREE.Group | null = null;
@@ -38,8 +41,20 @@ export class KartModel {
   private wheelSpin = 0;
   private brakeLights: THREE.MeshStandardMaterial[] = [];
   private lastSpeed = 0;
+  private jets: THREE.Mesh[] = [];
+  private spoiler: THREE.Group | null = null;
+  private jetTime = 0;
 
-  constructor(look: KartLook, detailed = true) {
+  constructor(look: KartLook, detailed = true, vehicle: VehicleId = "u9x") {
+    if (vehicle === "roadster") {
+      const parts = buildRoadster(look.color, roadsterEnvironment);
+      this.root.name = "Tesla Roadster 2";
+      this.root.add(this.body); this.body.add(parts.car);
+      this.wheels.push(...parts.wheels); this.frontPivots.push(...parts.frontPivots);
+      this.rearWheelsLocal.push(...parts.rearWheelsLocal);
+      this.brakeLights = parts.brakeLights; this.jets = parts.jets; this.spoiler = parts.spoiler;
+      return;
+    }
     const template = detailed ? highModel : lowModel;
     if (!template) throw new Error("U9X model has not finished loading");
     this.root.name = "Yangwang U9 Xtreme";
@@ -120,7 +135,7 @@ export class KartModel {
     }
   }
 
-  animate(dt: number, forwardSpeed: number, steer: number, pitch: number, roll: number, bounce: number) {
+  animate(dt: number, forwardSpeed: number, steer: number, pitch: number, roll: number, bounce: number, thrust = false) {
     this.wheelSpin = (this.wheelSpin + forwardSpeed / 0.36 * dt) % (Math.PI * 2);
     for (const wheel of this.wheels) wheel.rotation.x = this.wheelSpin;
     for (const pivot of this.frontPivots) pivot.rotation.y = -steer * 0.42;
@@ -129,6 +144,15 @@ export class KartModel {
     const braking = dt > 0 && forwardSpeed < this.lastSpeed - dt * 2;
     for (const light of this.brakeLights) light.emissiveIntensity = braking ? 2.5 : 0.8;
     this.lastSpeed = forwardSpeed;
+    this.jetTime += dt;
+    this.jets.forEach((jet, i) => {
+      jet.visible = thrust;
+      jet.scale.y = .8 + .18 * Math.sin(this.jetTime * 37 + i * 1.7);
+    });
+    if (this.spoiler) {
+      this.spoiler.position.y = (this.spoiler.userData.restY ?? .84) + (braking ? .045 : Math.min(.025, Math.abs(forwardSpeed) * .0006));
+      this.spoiler.rotation.x = braking ? -.1 : 0;
+    }
   }
 
   dispose() {

@@ -21,6 +21,8 @@ export interface KartInput {
   throttle: number;
   /** left/right axis, -1 (left) .. 1 (right) */
   steer: number;
+  /** Hold for Roadster cold-gas hover; release to descend. */
+  lift?: boolean;
 }
 
 export interface KartEvents {
@@ -59,6 +61,15 @@ export class Kart {
   /** spin-out timer (air bomb) */
   spin = 0;
   frozen = false;
+  flightEnabled = false;
+  flightCharge = 1;
+  thrusterActive = false;
+  private flightSession = false;
+  private flightLockout = false;
+  halfWidth = KART_HALF_WIDTH;
+  halfLength = 2.48;
+
+  get flightHeight() { return Math.max(0, this.pos.y - this.track.surfaceY(this.q)); }
 
   constructor(readonly track: Track) {}
 
@@ -91,6 +102,11 @@ export class Kart {
     this.resetBrakeHold();
     this.goingBackwards = false;
     this.grounded = true;
+    this.airTime = 0;
+    this.flightSession = false;
+    this.thrusterActive = false;
+    // Respawning cannot refill the tank or bypass the release-to-rearm latch.
+    this.flightLockout = false;
     this.spin = 0;
     this.lastS = this.q.s;
     this.progress = progress;
@@ -131,7 +147,7 @@ export class Kart {
   step(dt: number, input: KartInput) {
     this.events.railHit = 0;
     this.events.landed = 0;
-    if (this.frozen) { this.resetBrakeHold(); return; }
+    if (this.frozen) { this.resetBrakeHold(); this.thrusterActive = false; return; }
     const tr = this.track;
     const sinH = Math.sin(this.heading);
     const cosH = Math.cos(this.heading);
@@ -144,6 +160,16 @@ export class Kart {
     this.hint = this.q.i;
     const groundY = tr.surfaceY(this.q);
     const onGround = this.pos.y <= groundY + 0.06;
+    if (!input.lift) this.flightLockout = false;
+    const canLaunch = this.flightSession || (onGround && this.flightCharge >= .25 && this.forwardSpeed >= -.1);
+    this.thrusterActive = this.flightEnabled && !!input.lift && !this.flightLockout && canLaunch && this.flightCharge > 0 && this.spin <= 0;
+    if (this.thrusterActive) {
+      this.flightSession = true;
+      this.flightCharge = Math.max(0, this.flightCharge - dt / 4);
+      if (this.flightCharge <= 1e-8) { this.flightCharge = 0; this.flightLockout = true; }
+    } else if (this.flightEnabled && onGround && !input.lift) {
+      this.flightCharge = Math.min(1, this.flightCharge + dt / 10);
+    }
     this.offTrack = Math.abs(this.q.lat) > this.q.half + 0.35;
 
     let vF = this.vel.x * fx + this.vel.z * fz;
@@ -172,8 +198,8 @@ export class Kart {
     const braking = brakeHeld && !this.reverseEngaged;
     const brakingReverse = fb > 0 && vF < -STOP_SPEED;
     if (!onGround) {
-      lr *= DIRECTION_NERF_IN_AIR;
-      fb *= FORWARD_BACKWARD_NERF_IN_AIR;
+      lr *= this.flightSession ? .7 : DIRECTION_NERF_IN_AIR;
+      fb *= this.flightSession ? .45 : FORWARD_BACKWARD_NERF_IN_AIR;
     }
 
     // ---- longitudinal
@@ -210,7 +236,7 @@ export class Kart {
     const yawMax = Math.min(2.4, this.aLatMax / Math.max(speedAbs, 3)) * lowSpeed;
     const dirSign = vF >= 0 ? 1 : -1;
     const targetYaw = lr * yawMax * dirSign;
-    const yawResp = onGround ? 9 : 1.2;
+    const yawResp = onGround ? 9 : this.flightSession ? 3.5 : 1.2;
     this.yawRate += (targetYaw - this.yawRate) * (1 - Math.exp(-dt * yawResp));
     if (this.spin > 0) {
       this.spin -= dt;
@@ -229,7 +255,7 @@ export class Kart {
     let vR2 = vx * nrx + vz * nrz;
 
     // ---- lateral tyre grip
-    const grip = !onGround ? 0.25 : this.offTrack ? 5.5 : 11;
+    const grip = !onGround ? (this.flightSession ? 2.5 : .25) : this.offTrack ? 5.5 : 11;
     vR2 *= Math.exp(-grip * dt);
 
     // ---- soft clamp of the xz speed (OSK _soft_clamp_speed: smooth, never a hard stop)
@@ -239,7 +265,7 @@ export class Kart {
     if (this.goingBackwards && sp > REVERSE_MAX_SPEED) {
       vF2 *= REVERSE_MAX_SPEED / sp;
       vR2 *= REVERSE_MAX_SPEED / sp;
-    } else if (sp > vmax && onGround) {
+    } else if (sp > vmax && (onGround || this.flightSession)) {
       const excess = Math.min(sp * 0.5, sp - vmax);
       const k = Math.max(0, sp - excess * 2.6 * dt) / sp;
       vF2 *= k;
@@ -249,13 +275,21 @@ export class Kart {
     this.vel.z = nfz * vF2 + nrz * vR2;
 
     // ---- vertical
-    if (onGround) {
+    if (onGround && !this.thrusterActive) {
       // follow the surface: vertical speed from the slope under the velocity
       this.surfaceNormal(_n);
       const vy = -(_n.x * this.vel.x + _n.z * this.vel.z) / Math.max(0.2, _n.y);
       this.vel.y = vy;
     }
     this.vel.y -= GRAVITY * dt;
+    if (this.thrusterActive) {
+      // Arcade altitude controller: 3.5 m target, four-second tank. Not real specifications.
+      const height = Math.max(0, this.pos.y - groundY);
+      this.vel.y += (GRAVITY + THREE.MathUtils.clamp((3.5 - height) * 7 - this.vel.y * 4.5, -12, 20)) * dt;
+    } else if (this.flightSession) {
+      // Assisted descent has no lift/hover authority and cannot extend flight indefinitely.
+      this.vel.y = Math.max(-3.5, this.vel.y);
+    }
     this.pos.addScaledVector(this.vel, dt);
 
     // ---- ground contact after integration
@@ -272,6 +306,7 @@ export class Kart {
       }
       this.grounded = true;
       this.airTime = 0;
+      if (!this.thrusterActive) this.flightSession = false;
     } else {
       this.grounded = this.pos.y - gy < 0.05;
       if (!this.grounded) this.airTime += dt;
@@ -301,8 +336,9 @@ export class Kart {
     const j = tr.wrap(i + 1);
     const railR = tr.railR ? tr.railR[i] * (1 - q.t) + tr.railR[j] * q.t : q.half + tr.verge;
     const railL = tr.railL ? tr.railL[i] * (1 - q.t) + tr.railL[j] * q.t : q.half + tr.verge;
-    const limR = railR - KART_HALF_WIDTH;
-    const limL = -(railL - KART_HALF_WIDTH);
+    // Keep the hover corridor within this track's analytic world, at every altitude.
+    const limR = railR - this.halfWidth;
+    const limL = -(railL - this.halfWidth);
     let push = 0;
     if (q.lat > limR) push = limR - q.lat;
     else if (q.lat < limL) push = limL - q.lat;
