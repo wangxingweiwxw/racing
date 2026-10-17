@@ -9,6 +9,21 @@
 
 在标题界面选择赛道（切换时页面会重新加载），也可以直接打开 `?track=nordschleife` 或 `?track=shanghai`。
 
+## 开放街道 openracing
+
+主菜单新增「开放街道」入口，也可直接进入 [openracing](https://racing.chipai.cc/openracing/)。
+将用户提供的 `hupiao/` 街道场景和玩法整合为同一项目的第二入口：南京东路、外滩、黄浦江和陆家嘴，
+包括车流、路段探索、拍照点、计时挑战、漂移连击、贴墙行驶与飞越河道。
+城市为概括的程序化布局，并非实测上海道路。
+
+玩家车辆直接复用赛道模式和 v3 模型包的 `src/race/roadsterModel.ts`，包含内饰、五辐轮毂、蝶翼门和主动尾翼。
+腾空改为定高悬浮、空中转向辅助和自动姿态稳定，增加单次翻滚、近地减速喷气和悬架压缩。
+这些是视频启发的街机效果，风扇吸附也是游戏机制，不代表真实 Roadster 功能或性能验证。
+手机自动使用轻量画质、两侧多点触控按钮和小型气瓶图示，追尾镜头为底部操作区留出空间。
+
+WASD 驾驶，E 起跳/按住悬浮，Shift 推进，X 停车展车/空中翻滚，F 风扇吸附，空格漂移，R 复位。
+详细操作、资源来源和验证方法见 [开放街道说明](openracing/README.md)。
+
 ## 运行
 
 需要 Node.js 20.19+ / 22.12+ 和支持 WebGL2 的浏览器。
@@ -43,7 +58,7 @@ npx wrangler@4.147.0 login
 npm run deploy
 ```
 
-`npm run deploy` 会运行车辆与 Worker 测试、构建游戏、发布 Pages，最后发布 Worker。
+`npm run deploy` 会运行车辆、开放街道与 Worker 测试、构建两个游戏入口、发布 Pages，最后发布 Worker。
 也可分别执行 `npm run deploy:pages` 和 `npm run deploy:worker`。
 `wrangler.jsonc` 配置独立 Worker；Pages 使用命令中的项目名称和 `dist` 输出目录，
 因此 Pages 提示忽略这个 Worker 配置文件是预期行为。

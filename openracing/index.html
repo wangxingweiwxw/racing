@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>开放街道 openracing · Roadster 2</title>
+    <meta name="description" content="驾驶 Roadster 2 探索上海街区，漂移、飞越黄浦江、贴墙行驶。开放街道 openracing。" />
+    <style>
+      /* 单一深色夜景设计：游戏画面始终是上海夜景。语义色：金=车技加分/倍率，青=探索目标，绿=现金增加，红=连击中断/警告 */
+      :root {
+        color-scheme: dark;
+        --bg: #05060b;
+        --panel: rgba(10, 12, 20, 0.64);
+        --panel-strong: rgba(8, 10, 16, 0.82);
+        --line: rgba(255, 255, 255, 0.09);
+        --text: #eef1f7;
+        --dim: #8b93a7;
+        --accent: #3ee6c8;
+        --gold: #ffc53d;
+        --money: #3ddc84;
+        --warn: #ffb020;
+        --bad: #ff3b30;
+        --trick: #ff9f2e;
+        --photo: #3ee6c8;
+        --trial: #5aa8ff;
+        --food: #e46cff;
+        --font: -apple-system, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans CJK SC', system-ui, sans-serif;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: var(--font); }
+      canvas#c { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+      #hud { position: fixed; inset: 0; pointer-events: none; font-variant-numeric: tabular-nums; }
+      .glass { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+      .caps { font-size: 10px; letter-spacing: 0.16em; color: var(--dim); font-weight: 700; }
+
+      /* 左上：车库通知 */
+      #notice { position: absolute; top: 14px; left: 14px; display: flex; gap: 9px; align-items: center; padding: 7px 14px 7px 9px; border-radius: 12px; transition: opacity 0.6s, transform 0.6s; }
+      #notice.gone { opacity: 0; transform: translateY(-8px); }
+      #notice i { width: 18px; height: 18px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 10px rgba(62, 230, 200, 0.6); flex: none; }
+      #notice b { display: block; font-size: 12px; font-weight: 600; }
+      #notice span { display: block; font-size: 10px; color: var(--dim); }
+
+      #cash-delta.neg { color: #ff8a80; background: rgba(40, 10, 12, 0.75); border-color: rgba(255, 59, 48, 0.4); }
+
+      /* 顶部居中：下一站 */
+      #objective { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; align-items: center; padding: 7px 16px 7px 8px; border-radius: 12px; max-width: calc(100vw - 32px); }
+      #objective.swap { animation: flip 0.45s ease-out; }
+      @keyframes flip { from { transform: translateX(-50%) rotateX(80deg); opacity: 0; } to { transform: translateX(-50%) rotateX(0); opacity: 1; } }
+      #obj-icon { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-size: 13px; color: #041014; background: var(--photo); box-shadow: 0 0 12px var(--photo); flex: none; }
+      #objective[data-kind='trial'] #obj-icon { background: var(--trial); box-shadow: 0 0 12px var(--trial); }
+      #objective[data-kind='food'] #obj-icon { background: var(--food); box-shadow: 0 0 12px var(--food); }
+      #obj-place { font-size: 13px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      #obj-dist { font-size: 12px; color: var(--dim); margin-left: 8px; font-weight: 600; }
+      .obj-line { display: flex; align-items: baseline; min-width: 0; }
+
+      /* 右上：按钮、现金、增量、事件卡 */
+      #tr { position: absolute; top: 14px; right: 14px; display: flex; flex-direction: column; align-items: flex-end; gap: 7px; width: 260px; }
+      #btns { display: flex; gap: 6px; pointer-events: auto; }
+      #btns button { font: 700 10px var(--font); letter-spacing: 0.12em; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; cursor: pointer; }
+      #btns button:hover, #btns button:focus-visible { border-color: rgba(255, 255, 255, 0.3); outline: none; }
+      #btns kbd { font: inherit; color: var(--dim); margin-left: 4px; }
+      #fps { font-size: 10px; color: var(--dim); }
+      #cash { padding: 6px 12px; border-radius: 9px; display: flex; align-items: baseline; gap: 8px; }
+      #cash-val { font-size: 19px; font-weight: 800; letter-spacing: 0.02em; }
+      #cash-delta { font-size: 11px; font-weight: 700; color: var(--money); background: rgba(10, 30, 18, 0.75); border: 1px solid rgba(61, 220, 132, 0.35); padding: 3px 9px; border-radius: 8px; opacity: 0; transform: translateY(-4px); transition: opacity 0.2s, transform 0.2s; white-space: nowrap; }
+      #cash-delta.show { opacity: 1; transform: translateY(0); }
+      #cards { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
+      .ev { background: var(--panel-strong); border: 1px solid var(--line); border-radius: 9px; padding: 8px 14px; min-width: 190px; max-width: 260px; text-align: center; transform: translateX(40px); opacity: 0; transition: transform 0.25s ease-out, opacity 0.25s; }
+      .ev.in { transform: translateX(0); opacity: 1; }
+      .ev.out { opacity: 0; transform: translateX(20px); }
+      .ev b { display: block; font-size: 14px; font-weight: 800; letter-spacing: 0.14em; }
+      .ev span { display: block; font-size: 11px; color: var(--dim); margin-top: 2px; letter-spacing: 0.04em; }
+      .ev.good b { color: var(--accent); }
+      .ev.gold { border-color: rgba(255, 197, 61, 0.45); }
+      .ev.gold b { color: var(--gold); }
+      .ev.warn { border-color: rgba(255, 59, 48, 0.4); }
+      .ev.warn b { color: #ff8a80; }
+      #callout { position: absolute; right: 26px; top: 46%; font-size: 20px; font-weight: 900; letter-spacing: 0.3em; color: var(--trick); text-shadow: 0 0 12px rgba(255, 159, 46, 0.6); opacity: 0; transition: opacity 0.15s; }
+      #callout.on { opacity: 1; animation: pulse 0.6s ease-in-out infinite alternate; }
+      @keyframes pulse { to { opacity: 0.65; } }
+
+      /* 左侧：连击 */
+      #combo { position: absolute; left: 14px; bottom: 214px; padding: 8px 14px 9px 12px; border-left: 3px solid var(--gold); background: linear-gradient(90deg, rgba(8, 10, 16, 0.78), rgba(8, 10, 16, 0.25)); border-radius: 0 10px 10px 0; min-width: 210px; opacity: 0; transition: opacity 0.25s; }
+      #combo.on { opacity: 1; }
+      #combo-label { font-size: 10px; font-weight: 800; letter-spacing: 0.16em; color: var(--gold); min-height: 13px; }
+      #combo .row { display: flex; align-items: baseline; gap: 8px; }
+      #combo-score { font-size: 30px; font-weight: 900; letter-spacing: 0.01em; line-height: 1.1; }
+      #combo-mult { font-size: 13px; font-weight: 800; color: var(--gold); }
+      #combo .bar { height: 3px; background: rgba(255, 255, 255, 0.12); border-radius: 2px; margin-top: 4px; overflow: hidden; }
+      #combo-bar { height: 100%; width: 100%; background: var(--gold); border-radius: 2px; }
+      #combo.failed { border-left-color: var(--bad); transition: none; }
+      #combo.failed #combo-score { color: var(--bad); }
+      #combo.failed #combo-mult, #combo.failed .bar, #combo.failed #combo-label { visibility: hidden; }
+      #combo.banked { border-left-color: var(--money); }
+      #combo.banked #combo-score { color: var(--money); }
+
+      /* 左下：小地图 + 罗盘 + 区域 */
+      #map { position: absolute; left: 14px; bottom: 14px; display: grid; grid-template-columns: 132px auto; grid-template-rows: 132px auto; column-gap: 8px; align-items: end; }
+      #minimap { width: 132px; height: 132px; border-radius: 50%; display: block; }
+      #compass { width: 40px; height: 40px; border-radius: 50%; background: var(--panel-strong); border: 1px solid var(--line); display: grid; place-items: center; margin-bottom: 4px; }
+      #compass-arrow { width: 0; height: 0; border-left: 7px solid transparent; border-right: 7px solid transparent; border-bottom: 16px solid #ff4d5e; transition: transform 0.1s linear; filter: drop-shadow(0 0 4px rgba(255, 77, 94, 0.7)); }
+      #place { grid-column: 1 / 2; text-align: center; margin-top: 4px; text-shadow: 0 1px 3px #000; }
+      #district { font-size: 13px; font-weight: 800; }
+      #street { font-size: 10px; letter-spacing: 0.14em; color: #c4cad6; }
+      #street-sub { font-size: 9px; color: var(--dim); letter-spacing: 0.1em; min-height: 11px; }
+
+      /* 底部：读数圆 */
+      #tele { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); display: flex; gap: 10px; }
+      .dial { position: relative; width: 46px; height: 46px; opacity: 0.4; transition: opacity 0.2s; }
+      .dial.on { opacity: 1; }
+      .dial svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+      .dial circle { fill: rgba(8, 10, 16, 0.7); stroke: rgba(255, 255, 255, 0.12); stroke-width: 3; }
+      .dial circle.v { fill: none; stroke: var(--accent); stroke-dasharray: 119.4; stroke-dashoffset: 119.4; stroke-linecap: round; }
+      .dial.hot circle.v { stroke: var(--bad); }
+      .dial b { position: absolute; inset: 0; display: grid; place-items: center; font-size: 12px; font-weight: 800; }
+      .dial span { position: absolute; left: 50%; bottom: -13px; transform: translateX(-50%); font-size: 9px; color: var(--dim); white-space: nowrap; letter-spacing: 0.1em; }
+      #keys { position: absolute; left: 50%; bottom: 82px; transform: translateX(-50%); font-size: 10px; color: var(--dim); white-space: nowrap; opacity: 0.85; transition: opacity 1s; }
+      #keys.gone { opacity: 0; }
+      kbd { font-family: var(--font); font-size: 10px; padding: 1px 5px; border-radius: 4px; border: 1px solid rgba(255, 255, 255, 0.18); color: var(--text); background: rgba(255, 255, 255, 0.06); }
+
+      /* 右下：速度表 */
+      .speedo { position: absolute; right: 16px; bottom: 12px; width: 138px; height: 138px; }
+      .speedo svg { width: 100%; height: 100%; transform: rotate(135deg); }
+      .speedo .track { fill: rgba(8, 10, 16, 0.75); stroke: rgba(255, 255, 255, 0.1); stroke-width: 6; stroke-dasharray: 207 276; }
+      #ring { fill: none; stroke: var(--accent); stroke-width: 6; stroke-linecap: round; stroke-dasharray: 276.5; stroke-dashoffset: 276.5; filter: drop-shadow(0 0 4px rgba(62, 230, 200, 0.6)); }
+      #air-ring { fill: none; stroke: var(--money); stroke-width: 3; stroke-linecap: round; stroke-dasharray: 276.5; stroke-dashoffset: 276.5; transform: rotate(270deg) scale(1.1); transform-box: fill-box; transform-origin: center; }
+      #air-ring.low { stroke: var(--bad); }
+      .speedo .read { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+      #speed { font-size: 36px; font-weight: 900; letter-spacing: 0.02em; line-height: 1; }
+      .unit { font-size: 9px; color: var(--dim); letter-spacing: 0.18em; margin-top: 2px; }
+      #gear { margin-top: 5px; font-size: 11px; font-weight: 800; padding: 1px 8px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.25); }
+      #air-val { font-size: 9px; color: var(--money); margin-top: 3px; letter-spacing: 0.06em; }
+      #mode { position: absolute; right: 52px; bottom: 156px; font-size: 10px; font-weight: 800; letter-spacing: 0.16em; padding: 3px 10px; border-radius: 999px; background: rgba(255, 255, 255, 0.1); }
+      #mode[data-mode='wall'], #mode[data-mode='ceiling'], #mode[data-mode='fan'] { background: rgba(62, 160, 255, 0.3); color: #b5ddff; }
+      #mode[data-mode='air'] { background: rgba(255, 159, 46, 0.25); color: #ffd19a; }
+      #mode[data-mode='sunk'] { background: rgba(255, 59, 48, 0.3); color: #ffc0bb; }
+
+      /* 开始 / 帮助 */
+      .overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: radial-gradient(ellipse at center, rgba(8, 10, 22, 0.72), rgba(3, 4, 10, 0.92)); z-index: 5; padding: 16px; overflow-y: auto; }
+      .overlay.hidden { display: none; }
+      .card { max-width: 560px; width: 100%; background: rgba(12, 14, 24, 0.85); border: 1px solid var(--line); border-radius: 16px; padding: 26px 28px; }
+      .card h1 { margin: 0; font-size: 34px; letter-spacing: 0.14em; }
+      .card h1 small { font-size: 13px; color: var(--accent); letter-spacing: 0.2em; margin-left: 10px; }
+      .card p { color: var(--dim); font-size: 13px; line-height: 1.7; margin: 10px 0 16px; }
+      .grid { display: grid; grid-template-columns: auto 1fr; gap: 7px 14px; font-size: 13px; align-items: center; }
+      .grid .k { text-align: right; white-space: nowrap; }
+      .grid .sec { grid-column: 1 / -1; color: var(--accent); font-size: 11px; letter-spacing: 0.18em; margin-top: 8px; }
+      button#go { margin-top: 20px; width: 100%; padding: 12px; font-size: 15px; font-weight: 700; letter-spacing: 0.2em; border-radius: 10px; border: 0; background: var(--accent); color: #04110e; cursor: pointer; font-family: var(--font); }
+      button#go:disabled { background: #2a3140; color: var(--dim); cursor: wait; }
+      @media (max-width: 760px) {
+        #tr { width: 200px; }
+        #keys, #tele { display: none; }
+        #map { grid-template-columns: 104px auto; grid-template-rows: 104px auto; }
+        #minimap { width: 104px; height: 104px; }
+        #combo { bottom: 176px; min-width: 170px; }
+        #combo-score { font-size: 24px; }
+        .speedo { width: 108px; height: 108px; }
+        #mode { bottom: 124px; right: 36px; }
+        #speed { font-size: 28px; }
+        #objective { top: 58px; }
+        .card { padding: 20px; }
+        .card h1 { font-size: 26px; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #objective.swap, #callout.on { animation: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="c"></canvas>
+    <div id="hud">
+      <div id="notice" class="glass"><i></i><div><b>Roadster 2 · 极光白</b><span>开放街道 openracing</span></div></div>
+
+      <div id="objective" class="glass" data-kind="photo">
+        <div id="obj-icon">◉</div>
+        <div style="min-width: 0">
+          <div id="obj-kind" class="caps">下一站 · 拍照点</div>
+          <div class="obj-line"><span id="obj-place">东方明珠</span><span id="obj-dist">0 m</span></div>
+        </div>
+      </div>
+
+      <div id="tr">
+        <div id="btns">
+          <button type="button" id="b-cam">视角<kbd>C</kbd></button>
+          <button type="button" id="b-help">帮助<kbd>H</kbd></button>
+          <button type="button" id="b-mute">静音<kbd>M</kbd></button>
+          <button type="button" id="b-reset" aria-label="扶正复位">复位</button>
+          <a id="back-racing" href="../">赛道</a>
+        </div>
+        <div id="cash" class="glass"><span class="caps">现金</span><span id="cash-val">¥0</span></div>
+        <div id="cash-delta"></div>
+        <div id="cards"></div>
+        <div id="fps"></div>
+      </div>
+      <div id="callout"></div>
+
+      <div id="combo">
+        <div id="combo-label"></div>
+        <div class="row"><span id="combo-score">0</span><span id="combo-mult">×1.00</span></div>
+        <div class="bar"><div id="combo-bar"></div></div>
+      </div>
+
+      <div id="map">
+        <canvas id="minimap"></canvas>
+        <div id="compass"><div id="compass-arrow"></div></div>
+        <div id="place"><div id="district">南京东路步行街</div><div id="street">南京东路</div><div id="street-sub"></div></div>
+      </div>
+
+      <div id="tele">
+        <div class="dial" id="t-drift"><svg viewBox="0 0 46 46"><circle cx="23" cy="23" r="19" /><circle class="v" cx="23" cy="23" r="19" /></svg><b>0</b><span>漂移角</span></div>
+        <div class="dial" id="t-air"><svg viewBox="0 0 46 46"><circle cx="23" cy="23" r="19" /><circle class="v" cx="23" cy="23" r="19" /></svg><b>0</b><span>滞空 s</span></div>
+        <div class="dial" id="t-fan"><svg viewBox="0 0 46 46"><circle cx="23" cy="23" r="19" /><circle class="v" cx="23" cy="23" r="19" /></svg><b>0</b><span>风扇 %</span></div>
+      </div>
+      <div id="keys"><kbd>W A S D</kbd> 驾驶 · <kbd>空格</kbd> 漂移 · <kbd>Shift</kbd> 主推进 · <kbd>E</kbd> 起跳/悬停 · <kbd>F</kbd> 风扇吸附</div>
+
+      <div id="mode">地面</div>
+      <div id="gas-bottle" role="progressbar" aria-label="压缩空气余量" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><svg viewBox="0 0 32 48" aria-hidden="true"><path d="M12 2h8v5h-8zM14 7v6m4-6v6M10 13h12l4 7v22a3 3 0 0 1-3 3H9a3 3 0 0 1-3-3V20Z" fill="none" stroke="currentColor" stroke-width="2"/><rect id="gas-liquid" x="10" y="22" width="12" height="18" rx="2" fill="currentColor"/></svg><span id="gas-percent">100%</span></div>
+      <div class="speedo">
+        <svg viewBox="0 0 100 100"><circle class="track" cx="50" cy="50" r="44" /><circle id="ring" cx="50" cy="50" r="44" /><circle id="air-ring" cx="50" cy="50" r="44" /></svg>
+        <div class="read"><div id="speed">000</div><div class="unit">KM/H</div><div id="gear">D</div><div id="air-val">600 L</div></div>
+      </div>
+    </div>
+
+    <div id="start" class="overlay">
+      <div class="card">
+        <h1>开放街道<small>openracing · Roadster 2</small></h1>
+        <p>沿南京东路一路向东，冲上外滩亲水平台的跳台，用冷气推进器飞越黄浦江，落到陆家嘴。打开底部风扇，可以直接开上大楼外墙。漂移、滞空、贴墙、擦墙都会累积车技连击，撞上东西就清零。</p>
+        <div class="grid" id="controls">
+          <div class="sec">地面</div>
+          <div class="k"><kbd>W</kbd> <kbd>S</kbd></div><div>油门 / 刹车倒车</div>
+          <div class="k"><kbd>A</kbd> <kbd>D</kbd></div><div>转向</div>
+          <div class="k"><kbd>空格</kbd></div><div>手刹漂移</div>
+          <div class="k"><kbd>F</kbd></div><div>底部风扇吸附（开/关）：撞墙即可贴墙行驶，约 7 秒过热</div>
+          <div class="sec">推进器 · 压缩空气 600 L（速度表外圈绿弧）</div>
+          <div class="k"><kbd>E</kbd></div><div>下推进器：地面点按起跳，空中按住悬停</div>
+          <div class="k"><kbd>Shift</kbd></div><div>后部主推进器加速（空中同样有效）</div>
+          <div class="k"><kbd>W</kbd> <kbd>S</kbd> / <kbd>A</kbd> <kbd>D</kbd></div><div>空中：微推 / 减速与转向辅助；松手自动回正。I / K 手动俯仰；空格 + A D 手动横滚。</div>
+          <div class="k"><kbd>X</kbd></div><div>停车展车；离地足够高时单次翻滚，消耗 60 L。落地前自动回正与缓冲。</div>
+          <div class="sec">其他</div>
+          <div class="k"><kbd>R</kbd></div><div>扶正复位</div>
+          <div class="k"><kbd>C</kbd></div><div>切换视角（追尾 / 远景 / 车头）</div>
+          <div class="k"><kbd>M</kbd> · <kbd>H</kbd></div><div>静音 · 帮助</div>
+        </div>
+        <button id="go" disabled>生成上海中…</button>
+        <p class="mode-note">手机使用两侧按键驾驶。吸附、腾空及翻滚为视频启发的街机玩法；城市为概括布局。<a href="../">返回赛道竞速</a></p>
+      </div>
+    </div>
+    <script type="module" src="../src/openracing/main.ts"></script>
+  </body>
+</html>

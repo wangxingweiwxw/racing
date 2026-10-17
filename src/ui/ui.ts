@@ -174,6 +174,7 @@ export class UI {
         "div",
         { class: "menu" },
         h("button", { class: "btn primary", onclick: () => this.show("setup") }, "开始比赛", h("span", { class: "k" }, "ENTER")),
+        h("button", { class: "btn", onclick: () => { location.href = `${import.meta.env.BASE_URL}openracing/`; } }, "开放街道", h("span", { class: "k" }, "OPENRACING")),
         h("button", { class: "btn", onclick: () => this.show("help") }, "操作说明", h("span", { class: "k" }, "H")),
         h("button", { class: "btn", onclick: () => this.openSettings("title") }, "设置", h("span", { class: "k" }, "")),
         h("button", { class: "btn", onclick: () => this.show("credits") }, "致谢与许可", h("span", { class: "k" }, "")),

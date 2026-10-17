@@ -1,0 +1,71 @@
+#back-racing { color:#d3f6f1; text-decoration:none; font-size:11px; padding:6px 8px; border:1px solid #ffffff30; border-radius:8px; }
+#btns { flex-shrink:0; }
+#btns button,#back-racing { white-space:nowrap;flex-shrink:0; }
+.mode-note { font-size:11px!important; color:#a5b6c4; }
+.mode-note a { color:#8be9dc; }
+#start .card { max-height:92dvh; overflow-y:auto; }
+#gas-bottle { position:absolute;left:18px;bottom:225px;display:flex;flex-direction:column;align-items:center;width:38px;height:60px;color:#91ece1;background:#07171d90;border:1px solid #b9ffed40;border-radius:9px;padding:3px;font-size:9px; }
+#gas-bottle svg { width:26px;height:39px; }
+#gas-bottle.low { color:#ffc660; }
+#gas-liquid { transform:scaleY(var(--fuel,1));transform-origin:bottom;transform-box:fill-box; }
+#street-touch { display:none;pointer-events:none; }
+#street-touch button { position:absolute;width:48px;height:48px;padding:0;border:1px solid #ffffff60;border-radius:14px;color:white;background:#071923b8;font:600 12px system-ui;pointer-events:auto;touch-action:none;user-select:none; }
+#street-touch button.active { background:#247c82c9;border-color:#8bffff; }
+#street-touch button[data-control=fan].on { border-color:#85ffd2;color:#85ffd2; }
+@media (max-width:900px),(pointer:coarse) {
+  body.playing #street-touch { display:block; }
+  body #notice { top:12px;left:12px;padding:2px 0;border:0;background:none; }
+  body #notice b {font-size:10px;max-width:92px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  body #notice span {font-size:9px;max-width:92px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  body #notice i {display:none;}
+  body #tr {top:10px;right:10px;width:auto;}
+  body #btns {gap:4px;}
+  body #btns button,body #back-racing {font-size:10px;padding:6px;letter-spacing:0;}
+  body #btns kbd,body #cash,body #cash-delta,body #fps,body #tele,body #keys {display:none;}
+  body #objective {top:48px;left:12px;right:12px;transform:none;max-width:none;padding:6px 9px;gap:6px;}
+  body #objective.swap {animation:none;}
+  body #obj-place {font-size:11px;}
+  body #obj-kind {font-size:8px;}
+  body #obj-dist {font-size:10px;}
+  body #map {top:108px;left:12px;bottom:auto;grid-template-columns:84px;grid-template-rows:84px auto;}
+  body #minimap {width:84px;height:84px;}
+  body #place {max-width:120px;}
+  body #district {font-size:10px;}
+  body #street,body #street-sub {font-size:9px;}
+  body #compass {display:none;}
+  body #cards {max-width:150px;position:absolute;right:0;top:82px;}
+  body #cards .ev {padding:6px 8px;min-width:0;max-width:150px;}
+  body #cards .ev b {font-size:11px;}
+  body #cards .ev span {font-size:9px;line-height:1.3;}
+  body #cards .ev:nth-child(n+3) {display:none;}
+  body #combo {top:240px;bottom:auto;left:12px;}
+  body #combo-score {font-size:20px;}
+  body #combo-label,body #combo-mult {font-size:10px;}
+  body #callout {top:200px;right:12px;font-size:17px;}
+  body .speedo {width:88px;height:88px;left:calc(50% - 44px);right:auto;bottom:8px;}
+  body #speed {font-size:25px;}
+  body #air-val,body #gear {font-size:9px;}
+  body #mode {bottom:99px;left:calc(50% - 45px);right:auto;width:90px;text-align:center;font-size:9px;}
+  body #gas-bottle {left:12px;bottom:82px;width:38px;height:60px;}
+  #street-touch [data-control=left] {left:12px;bottom:20px;font-size:34px;}
+  #street-touch [data-control=right] {left:66px;bottom:20px;font-size:34px;}
+  #street-touch [data-control=throttle] {right:12px;bottom:20px;}
+  #street-touch [data-control=brake] {right:66px;bottom:20px;}
+  #street-touch [data-control=hop] {right:12px;bottom:82px;}
+  #street-touch [data-control=boost] {right:66px;bottom:82px;}
+  #street-touch [data-control=fan] {right:12px;bottom:140px;}
+  #street-touch [data-control=action] {right:66px;bottom:140px;}
+  #street-touch [data-control=handbrake] {left:66px;bottom:82px;}
+  body #start .card {padding:18px;}
+  body #start h1 {font-size:28px;}
+  body #controls {font-size:11px;}
+}
+@media(max-height:540px) and (orientation:landscape){
+  body #objective {top:10px;left:calc(50% - 125px);right:auto;width:250px;}
+  body #map {top:62px;}
+  body #cards {top:45px;}
+  body #combo {top:170px;}
+  body #callout {top:100px;right:12px;}
+  body #place {display:none;}
+  body #start .grid {display:none;}
+}
