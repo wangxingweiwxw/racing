@@ -154,6 +154,8 @@ export class Vehicle {
   private lastThrust = -10;
   private emptyWarned = false;
   private snapAlign = false;
+  private wallContactTime = -10;
+  private crashEventTime = -10;
   support: Collider | null = null;
   private readonly events: VehicleEvent[] = [];
   private readonly pool: Contact[] = [];
@@ -192,6 +194,10 @@ export class Vehicle {
   }
 
   private push(type: EventType, strength = 1): void {
+    if (type === 'crash') {
+      if (this.time - this.crashEventTime < .45) return;
+      this.crashEventTime = this.time;
+    }
     this.events.push({ type, strength });
   }
 
@@ -228,17 +234,12 @@ export class Vehicle {
     }
 
     if (inp.reset && !this.prevReset) {
-      // 原地扶正：保留朝向的水平分量
-      this.fwd(_f).setY(0);
-      if (_f.lengthSq() < 1e-4) _f.set(0, 0, 1);
-      _f.normalize();
-      this.q.setFromUnitVectors(new Vector3(0, 0, 1), _f);
-      this.pos.y += 1.5;
-      this.vel.set(0, 0, 0);
-      this.angVel.set(0, 0, 0);
-      this.stuntTime=0;this.stuntRoll=0;this.showcase=false;this.hoverY=this.pos.y+3.5;
-      this.riverAssist=0;
-      this.push('respawn');
+      // A clear, grounded checkpoint lets the driver escape walls and roofs.
+      this.respawn();
+      this.prevReset = true;
+      this.prevFan = inp.fan;
+      this.prevHop = inp.hop;
+      return this.events;
     }
     this.prevReset = inp.reset;
 
@@ -396,7 +397,9 @@ export class Vehicle {
     } else if (this.pos.y < -60) this.sink();
 
     // 记录安全点（复位用）
-    if (this.grounded && this.groundN.y > 0.9 && this.time - this.safeT > 0.5 && (this.pos.x < r.x0 - 30 || this.pos.x > r.x1 + 30)) {
+    if (this.grounded && this.groundN.y > 0.9 && this.time - this.safeT > 0.5 &&
+      this.time - this.wallContactTime > 1.5 &&
+      (this.pos.x < r.x0 - 30 || this.pos.x > r.x1 + 30) && this.clearRecoveryPoint(env)) {
       this.safeT = this.time;
       this.safePos.copy(this.pos);
       this.fwd(_f).setY(0).normalize();
@@ -424,8 +427,21 @@ export class Vehicle {
   }
 
   private respawn(): void {
-    this.place(this.safePos.clone().add(new Vector3(0, 0.5, 0)), this.safeQ);
+    this.fanOn = false;
+    this.place(this.safePos.clone(), this.safeQ.clone());
+    this.wallContactTime = -10;
+    this.downThrust = this.mainThrust = 0;
     this.push('respawn');
+  }
+
+  private clearRecoveryPoint(env: Env): boolean {
+    // Keep the whole car, not just its central collision sphere, away from walls.
+    const count = env.world.contacts(this.pos, 3, 0, this.pool);
+    for (let i = 0; i < count; i++) {
+      const c = this.pool[i];
+      if (c.depth > 0 && c.normal.y < .7) return false;
+    }
+    return true;
   }
 
   private drive(inp: DriveInput, dt: number): void {
@@ -445,7 +461,8 @@ export class Vehicle {
     const speed = Math.hypot(vF, vL);
 
     // 转向：低速受限，高速收敛；倒车反向
-    let steerRate = Math.min(speed / 5, 1) * lerp(T.steerLow, T.steerHigh, clamp(speed / 70, 0, 1)) * (inp.handbrake ? 1.4 : 1);
+    const maneuver = this.time - this.wallContactTime < 1 && Math.abs(inp.throttle) > .1 ? .35 : 0;
+    let steerRate = Math.min(Math.max(speed / 5, maneuver), 1) * lerp(T.steerLow, T.steerHigh, clamp(speed / 70, 0, 1)) * (inp.handbrake ? 1.4 : 1);
     // 漂移稳定：侧滑角越大，继续加大侧滑的转向越弱（反打方向不受影响）
     if (this.steer * this.slip < 0) steerRate *= 1 - clamp((Math.abs(this.slip) - 0.45) / 0.5, 0, 0.9);
     const dir = vF >= -0.5 ? 1 : -1;
@@ -614,9 +631,10 @@ export class Vehicle {
           this.push('crash', Math.max(-vn, 4));
         } else {
           // 撞墙
+          if (Math.abs(n.y) < .6) this.wallContactTime = this.time;
           this.pos.addScaledVector(n, c.depth);
           if (vn < 0) {
-            this.vel.addScaledVector(n, -vn * 1.25);
+            this.vel.addScaledVector(n, -vn * 1.08);
             if (-vn > 3) this.vel.multiplyScalar(0.92);
             if (-vn > 5) this.push('crash', -vn);
           }
@@ -626,9 +644,30 @@ export class Vehicle {
     if (support) {
       this.grounded = true;
       this.groundN.copy(_n.normalize());
+      if (!this.fanOn && this.groundN.y > .8) this.resolveBodyEnds(env);
     } else {
       this.grounded = false;
       this.support = null;
+    }
+  }
+
+  /** The central suspension sphere alone lets a 4.8 m car bury its nose in a wall. */
+  private resolveBodyEnds(env: Env): void {
+    this.fwd(_f).setY(0).normalize();
+    for (const side of [-1, 1]) {
+      _v.copy(this.pos).addScaledVector(_f, side * 1.35);
+      const count = env.world.contacts(_v, 1.05, 0, this.pool);
+      for (let i = 0; i < count; i++) {
+        const c = this.pool[i];
+        if (c.depth <= 0 || Math.abs(c.normal.y) > .6) continue;
+        this.wallContactTime = this.time;
+        this.pos.addScaledVector(c.normal, c.depth);
+        const vn = this.vel.dot(c.normal);
+        if (vn < 0) {
+          this.vel.addScaledVector(c.normal, -vn * 1.08);
+          if (-vn > 5) this.push('crash', -vn);
+        }
+      }
     }
   }
 }

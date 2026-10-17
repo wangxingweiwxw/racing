@@ -553,6 +553,8 @@ Object.assign(window, {
   openracing: {
     car,
     renderer,
+    camera,
+    scene,
     vehicle,
     input,
     layout,

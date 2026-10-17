@@ -2,7 +2,7 @@
 // 外滩屋顶、梧桐、路灯、霓虹招牌、黄浦江水面、夜空。
 import {
   AdditiveBlending, BackSide, BoxGeometry, BufferAttribute, BufferGeometry, CanvasTexture, Color, ConeGeometry,
-  CylinderGeometry, DoubleSide, Group, IcosahedronGeometry, InstancedBufferAttribute,
+  CylinderGeometry, DoubleSide, Group, InstancedBufferAttribute,
   InstancedMesh, Matrix4, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, PlaneGeometry,
   Quaternion, ShaderMaterial, SphereGeometry, UniformsLib, UniformsUtils, Vector3,
 } from 'three';
@@ -10,7 +10,9 @@ import type { CubeTexture, Texture } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { BOUNDS, BUND, PUDONG_PROM_X1, RIVER, RIVER_CROSSINGS, mulberry32 } from './layout.ts';
 import type { Building, Layout, Street } from './layout.ts';
-import { paverTexture, radialTexture, signAtlas, wetRoughnessTexture } from './textures.ts';
+import { asphaltTexture, paverTexture, radialTexture, signAtlas, wetRoughnessTexture } from './textures.ts';
+
+import { streetDetails } from './streetDetails.ts';
 
 // ---------- 建筑立面材质 ----------
 const STYLE_PARAMS: [number, number, number][] = [
@@ -38,7 +40,7 @@ export function facadeMaterial(): MeshStandardMaterial {
         '#include <common>',
         `#include <common>
 attribute vec4 aStyle; attribute vec3 aBase; attribute float aSeed;
-varying vec3 vWPos; varying vec3 vWNorm; varying vec4 vStyle; varying vec3 vBase; varying float vSeed; varying float vTopDist;`,
+varying vec3 vWPos; varying vec3 vWNorm; flat varying vec4 vStyle; flat varying vec3 vBase; flat varying float vSeed; varying float vTopDist;`,
       )
       .replace(
         '#include <begin_vertex>',
@@ -57,7 +59,7 @@ vTopDist = (1.0 - position.y) * length(_im[1].xyz);`,
       .replace(
         '#include <common>',
         `#include <common>
-varying vec3 vWPos; varying vec3 vWNorm; varying vec4 vStyle; varying vec3 vBase; varying float vSeed; varying float vTopDist;
+varying vec3 vWPos; varying vec3 vWNorm; flat varying vec4 vStyle; flat varying vec3 vBase; flat varying float vSeed; varying float vTopDist;
 float hh(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }`,
       )
       .replace(
@@ -82,6 +84,11 @@ win *= 1.0 - shopBand;
 float rnd = hh(cellId + vec2(vSeed * 13.1, vSeed * 7.7) + fT * 31.0);
 float lit = step(1.0 - litR, rnd);
 vec3 wall = vBase;
+// Subtle recessed window surrounds and stone floor bands add depth at street level.
+float frame = isSide * step(abs(fr.x-.5),ww*.5+.035) * step(abs(fr.y-.52),wh*.5+.025);
+wall *= mix(1.0,.67,frame);
+float ledge = isSide * (1.0-smoothstep(.015,.04,fr.y));
+wall = mix(wall, vBase*1.13,ledge);
 if (sid > 0.5 && sid < 1.5) wall = mix(wall, vec3(0.42, 0.15, 0.11), step(0.82, fract(fV / 1.1)));
 // 白天窗玻璃：偏冷的深色，个别窗拉了窗帘（偏亮）
 vec3 glass = sid > 2.5 ? vec3(0.12, 0.2, 0.28) : mix(vec3(0.1, 0.13, 0.17), vec3(0.55, 0.5, 0.42), step(0.82, rnd));
@@ -295,7 +302,8 @@ export function buildCity(layout: Layout): City {
   // 地面：湿沥青
   const rough = wetRoughnessTexture(3);
   rough.repeat.set(60, 90);
-  const asphalt = new MeshStandardMaterial({ color: 0x3f4450, roughness: 1, roughnessMap: rough, metalness: 0.0, envMapIntensity: 0.35 });
+  const roadGrain = asphaltTexture(); roadGrain.repeat.set(100,160);
+  const asphalt = new MeshStandardMaterial({ map:roadGrain, color: 0x858c94, roughness: 1, roughnessMap: rough, metalness: 0.0, envMapIntensity: 0.35 });
   const puxi = new Mesh(new PlaneGeometry(RIVER.x0 - BX0, BZ1 - BZ0).rotateX(-Math.PI / 2), asphalt);
   puxi.position.set((BX0 + RIVER.x0) / 2, 0, 0);
   const pudong = new Mesh(new PlaneGeometry(BX1 - RIVER.x1, BZ1 - BZ0).rotateX(-Math.PI / 2), asphalt);
@@ -325,6 +333,7 @@ export function buildCity(layout: Layout): City {
   group.add(green);
 
   group.add(markings(layout));
+  group.add(streetDetails(layout));
 
   // 外滩亲水平台 + 防汛墙 + 栏杆
   const stone = new MeshStandardMaterial({ color: 0xb6b0a6, roughness: 0.8, envMapIntensity: 0.4 });
@@ -454,10 +463,11 @@ export function buildCity(layout: Layout): City {
   const crowns: Matrix4[] = [];
   for (const [x, z, s] of layout.trees) {
     trunks.push(mat4(x, 2 * s, z, rng() * 6, s, s, s));
-    crowns.push(mat4(x, 5.6 * s, z, rng() * 6, s * (1 + rng() * 0.3), s * 0.8, s * (1 + rng() * 0.3)));
+    crowns.push(mat4(x, 6 * s, z, rng() * 6, s*.86, s*.85, s*.86));
+    for(const side of [-1,1])crowns.push(mat4(x+side*1.45*s,5.3*s,z+side*.65*s,rng()*6,s*.72,s*.65,s*.8));
   }
   group.add(instanced(new CylinderGeometry(0.18, 0.26, 4, 5), new MeshStandardMaterial({ color: 0x6b5a48, roughness: 0.9 }), trunks));
-  group.add(instanced(new IcosahedronGeometry(2.7, 1), new MeshStandardMaterial({ color: 0x4a8a3c, roughness: 0.9, flatShading: true }), crowns));
+  group.add(instanced(new SphereGeometry(2.7, 6, 3), new MeshStandardMaterial({ color: 0x4a8a3c, roughness: 0.9, flatShading: false }), crowns));
 
   // 路灯 + 地面光斑
   const poles: Matrix4[] = [];

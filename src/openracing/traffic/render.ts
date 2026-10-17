@@ -1,6 +1,6 @@
-// 车流 / 行人 / 红绿灯的渲染。全部用 InstancedMesh：每种车型 4 次绘制、行人 4 次、红绿灯 2 次。
+// 车流 / 行人 / 红绿灯的渲染。每种车型用 4 个近景实例批次和 1 个远景简模批次。
 import {
-  AdditiveBlending, BoxGeometry, BufferAttribute, BufferGeometry, Color, CylinderGeometry, DynamicDrawUsage, Group,
+  AdditiveBlending, BoxGeometry, Color, CylinderGeometry, DynamicDrawUsage, Group,
   InstancedMesh, Matrix4, MeshBasicMaterial, MeshStandardMaterial, Object3D, PlaneGeometry, Quaternion, Vector3,
 } from 'three';
 import type { Camera } from 'three';
@@ -9,59 +9,12 @@ import { radialTexture } from '../world/textures.ts';
 import { LANE_OFFSETS, lightFor } from './network.ts';
 import type { Network } from './network.ts';
 import { CAR_TYPES } from './traffic.ts';
-import type { CarType, Traffic } from './traffic.ts';
+import type { Traffic } from './traffic.ts';
 
 const DRAW_CARS = 420; // 米
 
-/** 夜景下让实例颜色自带一点亮度（没有实时光照也看得清） */
-export function nightLit(m: MeshStandardMaterial, k: number): MeshStandardMaterial {
-  m.onBeforeCompile = (sh) => {
-    sh.fragmentShader = sh.fragmentShader.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>\ntotalEmissiveRadiance += diffuseColor.rgb * ${k.toFixed(2)};`);
-  };
-  return m;
-}
-
-export function colored(g: BufferGeometry, c: number | [number, number, number]): BufferGeometry {
-  const n = g.attributes.position.count;
-  const rgb = typeof c === 'number' ? [c, c, c] : c;
-  const arr = new Float32Array(n * 3);
-  for (let i = 0; i < n; i++) arr.set(rgb, i * 3);
-  g.setAttribute('color', new BufferAttribute(arr, 3));
-  return g;
-}
-
-export function carGeometry(t: CarType): { body: BufferGeometry; head: BufferGeometry; tail: BufferGeometry } {
-  const L = t.len;
-  const W = t.wid;
-  const H = t.hgt;
-  const parts: BufferGeometry[] = [];
-  const box = (w: number, h: number, l: number, x: number, y: number, z: number, c: number) => parts.push(colored(new BoxGeometry(w, h, l).translate(x, y, z), c));
-  const clear = 0.32;
-  if (t.name === 'bus') {
-    box(W, H - clear, L, 0, clear + (H - clear) / 2, 0, 1);
-    box(W + 0.02, 1.0, L - 1.2, 0, H - 1.1, -0.2, 0.06); // 车窗带
-    box(W + 0.03, 0.18, L + 0.02, 0, clear + 0.55, 0, 0.92);
-  } else if (t.name === 'van') {
-    box(W, H - clear, L, 0, clear + (H - clear) / 2, 0, 1);
-    box(W + 0.02, 0.7, 1.2, 0, H - 0.55, L / 2 - 0.7, 0.06);
-  } else {
-    const lowH = H * 0.46;
-    box(W, lowH, L, 0, clear + lowH / 2, 0, 1);
-    const cabL = L * (t.name === 'suv' ? 0.62 : 0.5);
-    const cabH = H - clear - lowH;
-    box(W * 0.86, cabH, cabL, 0, clear + lowH + cabH / 2, t.name === 'suv' ? -0.3 : -0.15, 0.07);
-    box(W * 0.84, 0.06, cabL * 0.92, 0, H - 0.02, t.name === 'suv' ? -0.3 : -0.15, 1); // 车顶
-    if (t.name === 'taxi') box(0.7, 0.22, 0.3, 0, H + 0.1, -0.15, 1.4);
-  }
-  const wr = t.name === 'bus' ? 0.5 : 0.34;
-  for (const [x, z] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) {
-    parts.push(colored(new CylinderGeometry(wr, wr, 0.28, 10).rotateZ(Math.PI / 2).translate(x * (W / 2 - 0.12), wr, z * (L / 2 - (t.name === 'bus' ? 2.2 : 0.85))), 0.05));
-  }
-  const lights = (z: number, y: number, w: number) =>
-    mergeGeometries([-1, 1].map((s) => new BoxGeometry(w, 0.12, 0.05).translate(s * (W / 2 - w / 2 - 0.08), y, z)));
-  const ly = t.name === 'bus' ? 0.9 : clear + H * 0.3;
-  return { body: mergeGeometries(parts), head: lights(L / 2 + 0.02, ly, 0.36), tail: lights(-L / 2 - 0.02, ly + 0.05, 0.42) };
-}
+export { carGeometry } from './carGeometry.ts';
+import { carGeometry, carLodGeometry } from './carGeometry.ts';
 
 const _m = new Matrix4();
 const _q = new Quaternion();
@@ -74,6 +27,8 @@ const UP = new Vector3(0, 1, 0);
 export class TrafficView {
   readonly group = new Group();
   private readonly bodies: InstancedMesh[] = [];
+  private readonly distant: InstancedMesh[] = [];
+  private readonly details: InstancedMesh[] = [];
   private readonly heads: InstancedMesh[] = [];
   private readonly tails: InstancedMesh[] = [];
   private readonly pools: InstancedMesh;
@@ -83,20 +38,29 @@ export class TrafficView {
     this.traffic = traffic;
     const counts = CAR_TYPES.map((_, i) => traffic.cars.filter((c) => c.type === i).length);
     const bodyMat = new MeshStandardMaterial({ vertexColors: true, roughness: 0.32, metalness: 0.25, envMapIntensity: 1.0 });
+    const detailMat = new MeshStandardMaterial({vertexColors:true,roughness:.4,metalness:.35});
     const headMat = new MeshBasicMaterial({ color: new Color(1.6, 1.6, 1.5) });
     const tailMat = new MeshBasicMaterial({ color: new Color(0.75, 0.04, 0.03) });
     CAR_TYPES.forEach((t, i) => {
       const g = carGeometry(t);
       const n = Math.max(1, counts[i]);
       const b = new InstancedMesh(g.body, bodyMat, n);
+      const lod = new InstancedMesh(carLodGeometry(t),bodyMat,n);
+      lod.name = `NPC ${t.name} distant`;
+      this.distant.push(lod);
+      const detail = new InstancedMesh(g.detail,detailMat,n);
+      detail.name = `NPC ${t.name} windows wheels trim`;
+      b.name = `NPC ${t.name} paint`;
       const h = new InstancedMesh(g.head, headMat, n);
       const tl = new InstancedMesh(g.tail, tailMat, n);
-      for (const m of [b, h, tl]) {
+      for (const m of [b, detail, h, tl, lod]) {
         m.instanceMatrix.setUsage(DynamicDrawUsage);
         m.frustumCulled = false;
         this.group.add(m);
       }
       b.castShadow = b.receiveShadow = true;
+      detail.castShadow = detail.receiveShadow = true;
+      this.details.push(detail);
       this.bodies.push(b);
       this.heads.push(h);
       this.tails.push(tl);
@@ -115,34 +79,35 @@ export class TrafficView {
     for (const c of traffic.cars) {
       const k = idx[c.type]++;
       this.bodies[c.type].setColorAt(k, _c.setHex(c.color));
+      this.distant[c.type].setColorAt(k,_c);
       this.tails[c.type].setColorAt(k, _c.setRGB(1, 1, 1));
     }
     for (const m of [...this.bodies, ...this.tails]) if (m.instanceColor) m.instanceColor.needsUpdate = true;
   }
 
   update(camera: Camera): void {
-    const idx = CAR_TYPES.map(() => 0);
-    let pools = 0;
+    const near = CAR_TYPES.map(() => 0), far = CAR_TYPES.map(() => 0);
     const cp = camera.position;
     for (const c of this.traffic.cars) {
-      const k = idx[c.type]++;
-      const far = Math.hypot(c.x - cp.x, c.z - cp.z) > DRAW_CARS;
-      _q.setFromAxisAngle(UP, c.yaw);
-      _m.compose(_v.set(c.x, 0, c.z), _q, far ? _v.clone().set(0, 0, 0) : _s);
-      this.bodies[c.type].setMatrixAt(k, _m);
-      this.heads[c.type].setMatrixAt(k, _m);
-      this.tails[c.type].setMatrixAt(k, _m);
-      this.tails[c.type].setColorAt(k, c.brake ? _c.setRGB(3.2, 3.2, 3.2) : _c.setRGB(1, 1, 1));
-      if (!far && c.state === 'drive' && Math.hypot(c.x - cp.x, c.z - cp.z) < 200) this.pools.setMatrixAt(pools++, _m);
+      const distance = Math.hypot(c.x-cp.x,c.z-cp.z);
+      if(distance>DRAW_CARS)continue;
+      _q.setFromAxisAngle(UP,c.yaw);_m.compose(_v.set(c.x,0,c.z),_q,_s);
+      if(distance>95){
+        const k=far[c.type]++;this.distant[c.type].setMatrixAt(k,_m);this.distant[c.type].setColorAt(k,_c.setHex(c.color));
+        continue;
+      }
+      const k=near[c.type]++;
+      this.bodies[c.type].setMatrixAt(k,_m);this.bodies[c.type].setColorAt(k,_c.setHex(c.color));
+      this.details[c.type].setMatrixAt(k,_m);this.heads[c.type].setMatrixAt(k,_m);this.tails[c.type].setMatrixAt(k,_m);
+      this.tails[c.type].setColorAt(k,c.brake?_c.setRGB(3.2,3.2,3.2):_c.setRGB(1,1,1));
     }
-    for (let i = 0; i < CAR_TYPES.length; i++) {
-      this.bodies[i].instanceMatrix.needsUpdate = true;
-      this.heads[i].instanceMatrix.needsUpdate = true;
-      this.tails[i].instanceMatrix.needsUpdate = true;
-      if (this.tails[i].instanceColor) this.tails[i].instanceColor!.needsUpdate = true;
+    for(let i=0;i<CAR_TYPES.length;i++){
+      for(const m of [this.bodies[i],this.details[i],this.heads[i],this.tails[i],this.distant[i]]){
+        m.count=m===this.distant[i]?far[i]:near[i];m.instanceMatrix.needsUpdate=true;
+        if(m.instanceColor)m.instanceColor.needsUpdate=true;
+      }
     }
     this.pools.count = 0; // 白天不画车灯光斑
-    void pools;
     this.pools.instanceMatrix.needsUpdate = true;
   }
 }

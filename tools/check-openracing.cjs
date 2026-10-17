@@ -6,7 +6,7 @@ const origin=process.env.BASE_URL||'http://127.0.0.1:5178';
  const browser=await chromium.launch({channel:'msedge',headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});
  try{
   const page=await browser.newPage({viewport:{width:1280,height:800},deviceScaleFactor:1});
-  const errors=[];page.on('pageerror',e=>errors.push(e.message));fs.mkdirSync('checks/openracing',{recursive:true});
+  const errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error'&&/THREE|shader|WebGL/i.test(m.text()))errors.push(m.text());});fs.mkdirSync('checks/openracing',{recursive:true});
   await page.goto(origin+'/openracing/?manual&q=low',{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>window.openracing,null,{timeout:120000});
   assert.match(await page.title(),/开放街道 openracing/);console.log('Openracing loaded');

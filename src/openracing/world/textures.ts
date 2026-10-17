@@ -167,3 +167,12 @@ export function pearlTexture(): CanvasTexture {
   t.colorSpace = SRGBColorSpace;
   return t;
 }
+
+/** Fine aggregate and faint repaired seams, tiled with mipmaps on the road. */
+export function asphaltTexture(): CanvasTexture {
+  const [c,g]=canvas(256,256),rng=mulberry32(81),pixels=g.createImageData(256,256);
+  for(let i=0;i<pixels.data.length;i+=4){const v=92+rng()*24;pixels.data[i]=v;pixels.data[i+1]=v+2;pixels.data[i+2]=v+4;pixels.data[i+3]=255;}
+  g.putImageData(pixels,0,0);g.strokeStyle='rgba(30,35,39,.16)';g.lineWidth=1.5;
+  g.beginPath();g.moveTo(0,85);g.lineTo(80,83);g.lineTo(150,89);g.lineTo(256,86);g.stroke();
+  const t=new CanvasTexture(c);t.wrapS=t.wrapT=RepeatWrapping;t.colorSpace=SRGBColorSpace;t.anisotropy=4;return t;
+}
