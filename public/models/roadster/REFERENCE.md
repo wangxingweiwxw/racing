@@ -51,7 +51,9 @@ No downloaded vehicle meshes or video textures are included.
 - Release or empty tank: assisted descent, maximum downward speed 3.5 m/s.
 - Grounded and lift released: recharge in 10 seconds from empty.
 - Minimum 25% charge to launch; release to rearm after exhaustion.
-- Uses the same 90/108/126/144 km/h arcade speed classes as U9.
+- Vehicle speed caps: Roadster 370.15 km/h; U9 Xtreme 496.22 km/h.
+- Optional corner assistance anticipates braking and gently corrects at road edges;
+  assisted records are separate from manual driving. Hover remains manually controlled.
 - Flight stays inside the existing track corridor. This is short hovering and
   driving, not unrestricted aircraft simulation or a barrel-roll recreation.
 - Separate best times, sector splits and ghosts prevent mixing flight-assisted

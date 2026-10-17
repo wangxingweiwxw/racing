@@ -9,7 +9,7 @@ export function vehicleMaxSpeedMps(vehicle: VehicleId = "u9x") {
   return VEHICLES[vehicle].maxSpeedKmh / 3.6;
 }
 
-/** Keep records for different cars and their distinct speed caps separate. */
-export function recordSuffix(vehicle: VehicleId = "u9x") {
-  return vehicle === "roadster" ? "-roadster-vmax370-flight-v1" : "-u9x-vmax496";
+/** Keep assisted records separate; manual mode retains the existing vehicle keys. */
+export function recordSuffix(vehicle: VehicleId = "u9x", assist = true) {
+  return (vehicle === "roadster" ? "-roadster-vmax370-flight-v1" : "-u9x-vmax496") + (assist ? "-assist-v1" : "");
 }

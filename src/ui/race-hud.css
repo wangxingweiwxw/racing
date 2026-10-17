@@ -1,8 +1,10 @@
 /* Shared U9 / Roadster cockpit. */
 .vehicle-option small { display: block; font-size: 10px; letter-spacing: .18em; color: #94c8dc; margin-bottom: 8px; }
+#hud .assist-status { text-align: center; font-size: 11px; line-height: 18px; color: #a8d9e9; }
+#hud .assist-status.active { color: #ffd382; }
 .vehicle-note { font-size: 12px; line-height: 1.7; color: #9cafc3; margin: 10px 0 0; }
 .vehicle-note a { color: #a4e5ff; margin-left: 8px; }
-#hud .flight-panel { position: absolute; left: 50%; bottom: 172px; transform: translateX(-50%); width: 230px; padding: 12px 15px; border: 1px solid #89bdd440; background: #06131cbd; border-radius: 6px; font-size: 12px; }
+#hud .flight-panel { position: absolute; left: 50%; bottom: 190px; transform: translateX(-50%); width: 230px; padding: 12px 15px; border: 1px solid #89bdd440; background: #06131cbd; border-radius: 6px; font-size: 12px; }
 #hud .flight-panel.active { border-color: #b8edff; box-shadow: 0 0 20px #8bdfff18; }
 #hud .flight-heading, #hud .flight-data { display: flex; justify-content: space-between; gap: 12px; }
 #hud .flight-heading b { letter-spacing: .16em; font-size: 10px; }
@@ -14,7 +16,7 @@
 #hud .drive-lift svg { height: 30px; }
 #hud .drive-lift span { font-size: 11px; }
 @media (max-height: 540px) and (orientation: landscape) {
-  #hud .flight-panel { bottom: 108px; width: 204px; padding: 8px 12px; }
+  #hud .flight-panel { bottom: 128px; width: 204px; padding: 8px 12px; }
   #hud .flight-panel small { display: none; }
   #hud .touch .drive-lift { bottom: 142px; right: 22px; width: 54px; height: 54px; padding: 5px; }
 }
@@ -82,6 +84,7 @@
 #hud .pedal-pair .drive-brake.active { background: #bcd6e51a; }
 #hud .drive-brake::after { content: ""; position: absolute; bottom: 6%; left: 20%; width: 60%; height: 3px; border-radius: 2px; background: linear-gradient(90deg,#8be4ff var(--hold,0%),transparent var(--hold,0%)); }
 #hud .reverse-status { min-height: 14px; margin-top: 4px; text-align: center; color: #b8e9ff; font-size: 11px; }
+#hud .reverse-status:empty, #hud .reverse-status:not(:empty) + .assist-status { display: none; }
 #hud .slots { pointer-events: auto; background: transparent; }
 #hud .touch { z-index: 1; }
 #hud .steering-pad { position: absolute; left: max(calc(28 * var(--u)),env(safe-area-inset-left)); bottom: max(calc(32 * var(--u)),env(safe-area-inset-bottom)); width: calc(260 * var(--u)); height: calc(180 * var(--u)); border: 1px solid #ffffff60; border-radius: 50%; background: radial-gradient(ellipse,#ffffff03,#eff8ff12); box-shadow: inset 0 0 0 4px #ffffff0c; display: flex; overflow: hidden; }
@@ -109,7 +112,7 @@
   #hud .standings { width: 174px; font-size: 15px; }
   #hud .rank-caption, #hud .vehicle-badge, #hud .hint, #hud .timing-detail { display: none; }
   #hud .hud-br { bottom: max(12px,env(safe-area-inset-bottom)); }
-  #hud .steering-pad { bottom: 118px; left: 12px; width: min(38vw,156px); height: 115px; }
+  #hud .steering-pad { bottom: 130px; left: 12px; width: min(38vw,156px); height: 115px; }
   #hud .pedal-pair { bottom: 130px; right: max(12px,env(safe-area-inset-right)); gap: 6px; }
   #hud .pedal-pair .drive-control { width: min(23vw,88px); height: min(23vw,88px); padding: 17px; }
   #hud .pedal-pair .drive-brake { padding: 9px; }

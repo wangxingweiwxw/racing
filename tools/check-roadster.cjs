@@ -13,6 +13,10 @@ const origin = process.env.BASE_URL || 'http://127.0.0.1:5173';
     console.log('Game loaded');
     fs.mkdirSync('checks',{recursive:true});
     await page.locator('#title .primary').click();
+    assert.equal(await page.locator('[data-assist="true"]').getAttribute('aria-pressed'),'true');
+    await page.locator('[data-assist="false"]').click();
+    assert.equal(await page.evaluate(()=>window.__nk.ui.choice.assist),false);
+    await page.locator('[data-assist="true"]').click();
     await page.locator('[data-vehicle="roadster"]').click();
     assert.equal(await page.locator('[data-vehicle="roadster"]').getAttribute('aria-pressed'),'true');
     await page.screenshot({path:'checks/roadster-selection.png'});
@@ -23,6 +27,8 @@ const origin = process.env.BASE_URL || 'http://127.0.0.1:5173';
     assert.ok(Math.abs(await page.evaluate(()=>window.__nk.race.player.kart.maxSpeed*3.6)-370.15)<1e-6);
     assert.equal(await page.locator('.drive-lift').isVisible(),true);
     assert.equal(await page.evaluate(()=>window.__nk.race.player.model.wheels.length),4);
+    assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('nk-choice')).assist),true);
+    assert.match(await page.locator('#assist-status').innerText(),/弯道辅助/);
     await page.screenshot({path:'checks/roadster-rear.png',timeout:120000});
     const view=async(x,y,z)=>page.evaluate(([x,y,z])=>{const g=window.__nk,root=g.race.player.model.root;const p=root.localToWorld(g.camera.position.clone().set(x,y,z));const target=root.localToWorld(g.camera.position.clone().set(0,.65,0));g.view(p.toArray(),target.toArray());g.advance(1);},[x,y,z]);
     await view(4,2.4,6);
@@ -54,11 +60,31 @@ const origin = process.env.BASE_URL || 'http://127.0.0.1:5173';
     assert.ok(Math.abs(await page.evaluate(()=>window.__nk.race.player.kart.maxSpeed*3.6)-496.22)<1e-6);
     assert.notEqual(await page.evaluate(()=>window.__nk.race.bestTime()),19);
     assert.equal(await page.locator('.drive-lift').isVisible(),false);
+    // Real keyboard input passes through UserBrain and triggers predictive braking.
+    await page.evaluate(()=>{
+      const g=window.__nk,k=g.race.player.kart,tr=g.track;
+      const i=tr.curv.reduce((best,c,i)=>Math.abs(c)>Math.abs(tr.curv[best])?i:best,0);
+      k.placeAt(tr.wrapS(i*tr.step-80),0,0);
+      k.vel.set(Math.sin(k.heading)*85,0,-Math.cos(k.heading)*85);
+    });
+    await page.keyboard.down('w');await page.evaluate(()=>window.__nk.advance(2));
+    assert.ok(await page.evaluate(()=>window.__nk.race.player.brain.input.throttle<0));
+    assert.match(await page.locator('#assist-status').innerText(),/辅助制动/);
+    await page.screenshot({path:'checks/assist-braking.png',timeout:120000});
+    await page.keyboard.up('w');
+    const assistedKey=await page.evaluate(()=>window.__nk.race.recordId);
+    await page.evaluate(()=>{const g=window.__nk;g.startRace({...g.ui.choice,vehicle:'u9x',mode:2,assist:false});g.advance(480,1/60,false);g.advance(1);});
+    assert.equal(await page.evaluate(()=>window.__nk.race.player.brain.assist),undefined);
+    assert.notEqual(await page.evaluate(()=>window.__nk.race.recordId),assistedKey);
+    assert.equal(await page.locator('#assist-status').innerText(),'手动驾驶');
     await page.evaluate(()=>{const g=window.__nk;g.startRace({...g.ui.choice,vehicle:'roadster',mode:1,bots:7});g.advance(480,1/60,false);g.advance(1);});
     assert.equal(await page.evaluate(()=>window.__nk.race.racers.length),8);
     for(const [width,height] of [[844,390],[390,844],[320,640]]) {
-      await page.setViewportSize({width,height});await page.evaluate(()=>window.__nk.advance(1));
-      const layout=await page.evaluate(()=>['.drive-lift','.flight-panel','.drive-pedal','.drive-brake','.steering-pad'].map(s=>{const r=document.querySelector(s).getBoundingClientRect();return {s,x:r.x,y:r.y,right:r.right,bottom:r.bottom,inside:r.x>=0&&r.y>=0&&r.right<=innerWidth&&r.bottom<=innerHeight};}));
+      await page.setViewportSize({width,height});
+      // Wait for the resize event before manually rendering, otherwise canvas resizing clears the frame.
+      await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+      await page.evaluate(()=>window.__nk.advance(2));
+      const layout=await page.evaluate(()=>['.drive-lift','.flight-panel','.drive-pedal','.drive-brake','.steering-pad','.speedo'].map(s=>{const r=document.querySelector(s).getBoundingClientRect();return {s,x:r.x,y:r.y,right:r.right,bottom:r.bottom,inside:r.x>=0&&r.y>=0&&r.right<=innerWidth&&r.bottom<=innerHeight};}));
       assert.ok(layout.every(r=>r.inside),JSON.stringify(layout));
       for(let a=0;a<layout.length;a++)for(let b=a+1;b<layout.length;b++) {
         const x=layout[a],y=layout[b];assert.ok(x.right<=y.x||y.right<=x.x||x.bottom<=y.y||y.bottom<=x.y,`Overlap: ${JSON.stringify([x,y])}`);
@@ -66,6 +92,6 @@ const origin = process.env.BASE_URL || 'http://127.0.0.1:5173';
       await page.screenshot({path:`checks/roadster-${width}.png`,timeout:120000});
     }
     assert.deepEqual(errors,[]);
-    console.log(JSON.stringify({result:'PASS',flying,browserErrors:errors,checks:'selection, drive, flight, landing, pointer, pause, records, restart, mixed grid, mobile'},null,2));
+    console.log(JSON.stringify({result:'PASS',flying,browserErrors:errors,checks:'selection, assist toggle, predictive braking, manual mode, drive, flight, landing, pointer, pause, records, restart, mixed grid, mobile'},null,2));
   } finally {await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

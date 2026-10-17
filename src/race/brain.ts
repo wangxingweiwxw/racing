@@ -6,6 +6,7 @@
 // into the forward/backward + left/right axes and the item button.
 import { Kart, KartInput } from "./kart";
 import { Track } from "../track";
+import { DrivingAssist } from "./drivingAssist";
 
 export interface Brain {
   input: KartInput;
@@ -57,9 +58,9 @@ export class UserBrain implements Brain {
   private steerSmoothed = 0;
   private padItemLatch = false;
 
-  constructor(private c: Controls) {}
+  constructor(private c: Controls, readonly assist?: DrivingAssist) {}
 
-  tick(dt: number) {
+  tick(dt: number, kart: Kart) {
     const k = this.c.keys;
     let thr = (k.has("KeyW") || k.has("ArrowUp") ? 1 : 0) - (k.has("KeyS") || k.has("ArrowDown") ? 1 : 0);
     let steerRaw = (k.has("KeyD") || k.has("ArrowRight") ? 1 : 0) - (k.has("KeyA") || k.has("ArrowLeft") ? 1 : 0);
@@ -89,6 +90,7 @@ export class UserBrain implements Brain {
     this.input.throttle = thr;
     this.input.lift = k.has("Space") || t.lift || !!pad?.buttons[4]?.pressed;
     this.input.steer = Math.abs(steerRaw) < 1 && pad ? steerRaw : this.steerSmoothed;
+    this.assist?.apply(kart, this.input);
     this.useItem = item;
   }
 }

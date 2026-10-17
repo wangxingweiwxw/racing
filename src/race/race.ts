@@ -11,6 +11,7 @@ import { BotBrain, Brain, Controls, UserBrain } from "./brain";
 import { ParticleSystem, SkidMarks } from "./effects";
 import { AirBomb, EXPLOSION_DURATION_SECONDS, EXPLOSION_RADIUS, GameMode, PlayerItemSlotsState, SlotItem } from "./items";
 import { Kart } from "./kart";
+import { DrivingAssist } from "./drivingAssist";
 import { KartLook, KartModel } from "./kartModel";
 import { GameAudio } from "../audio";
 import { recordSuffix, vehicleMaxSpeedMps, type VehicleId } from "./vehicles";
@@ -63,6 +64,7 @@ const LIVERIES: KartLook[] = [
 export const PLAYER_COLORS = [0xe63946, 0x1e64c8, 0xffbe0b, 0x2a9d8f, 0x8338ec, 0xf4f4f4, 0x111111, 0xff7b00];
 
 export interface RaceOptions {
+  assist?: boolean;
   vehicle?: VehicleId;
   mode: GameMode;
   course: Course;
@@ -142,7 +144,7 @@ export class Race {
       let brain: Brain;
       let name: string;
       if (isPlayer) {
-        brain = new UserBrain(controls);
+        brain = new UserBrain(controls, opts.assist !== false ? new DrivingAssist(track, maxSpeed, kart.aLatMax) : undefined);
         name = "你";
       } else {
         const skill = 0.86 + ((botIdx * 37) % 11) / 100;
@@ -180,7 +182,7 @@ export class Race {
     return `nk-ghost-${this.recordId}`;
   }
 
-  get recordId() { return `${this.opts.course.id}${recordSuffix(this.opts.vehicle)}`; }
+  get recordId() { return `${this.opts.course.id}${recordSuffix(this.opts.vehicle, this.opts.assist)}`; }
 
   private loadGhost() {
     try {

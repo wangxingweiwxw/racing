@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import * as THREE from 'three';
 import { Kart } from '../src/race/kart.ts';
+import { DrivingAssist } from '../src/race/drivingAssist.ts';
 import { Track } from '../src/track.ts';
 import { carOverlap } from '../src/race/carCollision.ts';
 import { buildRoadster } from '../src/race/roadsterModel.ts';
@@ -15,6 +16,7 @@ const step = (k, seconds, input, hz=120) => { for(let i=0;i<Math.round(seconds*h
 const car = (track=tracks[0]) => { const k=new Kart(track); k.flightEnabled=true; k.placeAt(100,0,0); return k; };
 const flatTrack = () => ({
   N:2, step:10, length:1000, verge:10000,
+  curv:new Float32Array(2), lineCurv:new Float32Array(2),
   x:new Float32Array([0,0]), z:new Float32Array([0,-10]), tx:new Float32Array([0,0]), tz:new Float32Array([-1,-1]),
   y:new Float32Array([0,0]), bank:new Float32Array([0,0]), half:new Float32Array([10000,10000]),
   wrap:i=>((i%2)+2)%2, wrapS:s=>((s%1000)+1000)%1000, deltaS:(a,b)=>b-a,
@@ -53,14 +55,17 @@ test('U9 ignores lift, low fuel cannot launch, and airborne steering stays finit
   assert.equal(carOverlap(k,ground),null);
 });
 
-test('U9 Xtreme and Roadster horizontal speed never exceeds their vehicle cap',()=>{
-  for (const vehicle of ['u9x','roadster']) {
+test('manual and assisted driving reach but never exceed each vehicle speed cap',()=>{
+  for (const vehicle of ['u9x','roadster']) for (const enabled of [false, true]) {
     const k=new Kart(flatTrack()); k.maxSpeed=vehicleMaxSpeedMps(vehicle); k.accel=8+k.maxSpeed*.12; k.placeAt(100,0,0);
+    const assist = new DrivingAssist(k.track, k.maxSpeed, k.aLatMax);
     for(let i=0;i<60*120;i++) {
-      k.step(1/120,{throttle:1,steer:0});
+      const input = {throttle:1,steer:0};
+      if (enabled) assist.apply(k, input);
+      k.step(1/120,input);
       assert.ok(k.speed<=k.maxSpeed+1e-9,`${vehicle}: ${k.speed*3.6} km/h`);
     }
-    assert.ok(k.speed>k.maxSpeed*.95,`${vehicle}: did not reach configured cap (${k.speed*3.6}/${k.maxSpeed*3.6} km/h)`);
+    assert.ok(k.speed>k.maxSpeed*.999,`${vehicle}: did not reach configured cap (${k.speed*3.6}/${k.maxSpeed*3.6} km/h)`);
   }
 });
 

@@ -212,7 +212,7 @@ async function boot() {
     audio.start();
     lastChoice = c;
     if (race) race.dispose(scene);
-    race = new Race(track, { mode: c.mode, course: c.course, playerColor: c.color, bots: c.bots, vehicle: c.vehicle }, controls, audio, scene);
+    race = new Race(track, { mode: c.mode, course: c.course, playerColor: c.color, bots: c.bots, vehicle: c.vehicle, assist: c.assist }, controls, audio, scene);
     prevBest = race.bestTime();
     finishT = -1;
     resultsShown = false;

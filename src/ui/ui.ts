@@ -10,6 +10,7 @@ import { BASE } from "../world/assets";
 import { Settings } from "../settings";
 import { TrackInfo, TRACKS, switchTrack } from "../tracks";
 import { VEHICLES, recordSuffix, type VehicleId } from "../race/vehicles";
+import { UserBrain } from "../race/brain";
 
 type Attrs = Record<string, string | number | boolean | ((e: Event) => void)>;
 export function h(tag: string, attrs: Attrs = {}, ...kids: (Node | string | null | undefined | false)[]): HTMLElement {
@@ -38,6 +39,7 @@ const modeInfo = (info: TrackInfo): { mode: GameMode; t: string; d: string }[] =
   { mode: GameMode.FREE, t: "自由驾驶", d: info.freeModeDesc },
 ];
 export interface SetupChoice {
+  assist: boolean;
   vehicle: VehicleId;
   mode: GameMode;
   course: Course;
@@ -83,6 +85,7 @@ export class UI {
     this.track = track;
     this.courses = courses;
     this.choice = {
+      assist: true,
       vehicle: "u9x",
       mode: GameMode.VERSUS,
       course: courses.find((c) => c.id === this.info.defaultCourse) ?? courses[0],
@@ -92,6 +95,7 @@ export class UI {
     try {
       const saved = JSON.parse(localStorage.getItem("nk-choice") || "null");
       if (saved) {
+        this.choice.assist = saved.assist !== false;
         this.choice.vehicle = saved.vehicle === "roadster" ? "roadster" : "u9x";
         this.choice.mode = saved.mode ?? this.choice.mode;
         this.choice.color = saved.color ?? this.choice.color;
@@ -224,16 +228,17 @@ export class UI {
   }
 
   // ------------------------------------------------------------------ setup (OSK pick mode / track)
-  private setupEls: { vehicles: HTMLElement; modes: HTMLElement; courses: HTMLElement; colors: HTMLElement; bots: HTMLElement; botsGroup: HTMLElement } | null = null;
+  private setupEls: { assist: HTMLElement; vehicles: HTMLElement; modes: HTMLElement; courses: HTMLElement; colors: HTMLElement; bots: HTMLElement; botsGroup: HTMLElement } | null = null;
 
   private buildSetup(): HTMLElement {
     const vehicles = h("div", { class: "opts vehicle-options" });
+    const assist = h("div", { class: "opts" });
     const modes = h("div", { class: "opts" });
     const courses = h("div", { class: "opts" });
     const colors = h("div", { class: "swatches" });
     const bots = h("div", { class: "opts" });
     const botsGroup = h("div", { class: "group" }, h("label", {}, "对手数量"), bots);
-    this.setupEls = { vehicles, modes, courses, colors, bots, botsGroup };
+    this.setupEls = { assist, vehicles, modes, courses, colors, bots, botsGroup };
     const s = h(
       "div",
       { class: "screen scrim hidden", id: "setup" },
@@ -247,6 +252,7 @@ export class UI {
             h("a", { href: `${BASE}models/roadster/REFERENCE.md`, target: "_blank", rel: "noopener" }, "建模参考 ↗"))),
         h("div", { class: "group" }, h("label", {}, "模式"), modes),
         h("div", { class: "group vehicle-speed-note" }, h("label", {}, "车型极速"), h("p", { class: "sub" }, "各车型使用对应最高时速；赛道驾驶表现仍受弯道、抓地力和路况影响。")),
+        h("div", { class: "group" }, h("label", {}, "驾驶辅助"), assist),
         h("div", { class: "group" }, h("label", {}, this.courses.some((co) => co.laps > 1) ? "圈数" : "赛段"), courses),
         botsGroup,
         h("div", { class: "group" }, h("label", {}, "车身颜色"), colors),
@@ -265,6 +271,11 @@ export class UI {
   private refreshSetup() {
     const e = this.setupEls!;
     const c = this.choice;
+    e.assist.replaceChildren(...[true, false].map(enabled => h("button", {
+      class: `opt ${c.assist === enabled ? "on" : ""}`, "data-assist": String(enabled), "aria-pressed": String(c.assist === enabled),
+      onclick: () => { c.assist = enabled; this.refreshSetup(); },
+    }, h("div", { class: "t" }, enabled ? "弯道辅助 · 推荐" : "手动驾驶"),
+    h("div", { class: "d" }, enabled ? "提前制动，路肩轻微纠偏；仍需控制转向。辅助成绩单独记录。" : "自行判断刹车点与转向，保留原有成绩。"))));
     e.vehicles.replaceChildren(...(Object.keys(VEHICLES) as VehicleId[]).map(id => {
       const v = VEHICLES[id];
       return h("button", { class: `opt vehicle-option ${c.vehicle === id ? "on" : ""}`, "data-vehicle": id, "aria-pressed": c.vehicle === id ? "true" : "false", onclick: () => { if (c.vehicle !== id && id === "roadster") c.color = 0xf4f4f4; c.vehicle = id; this.refreshSetup(); } },
@@ -279,7 +290,7 @@ export class UI {
       ...this.courses.map((co) => {
         let best = -1;
         try {
-          best = parseFloat(localStorage.getItem(`nk-best-${co.id}${recordSuffix(c.vehicle)}`) || "-1");
+          best = parseFloat(localStorage.getItem(`nk-best-${co.id}${recordSuffix(c.vehicle, c.assist)}`) || "-1");
         } catch {
           best = -1;
         }
@@ -310,7 +321,7 @@ export class UI {
 
   private start() {
     try {
-      localStorage.setItem("nk-choice", JSON.stringify({ vehicle: this.choice.vehicle, mode: this.choice.mode, course: this.choice.course.id, color: this.choice.color, bots: this.choice.bots }));
+      localStorage.setItem("nk-choice", JSON.stringify({ assist: this.choice.assist, vehicle: this.choice.vehicle, mode: this.choice.mode, course: this.choice.course.id, color: this.choice.color, bots: this.choice.bots }));
       localStorage.setItem(`nk-course-${this.info.id}`, this.choice.course.id);
     } catch {
       /* ignore */
@@ -350,6 +361,8 @@ export class UI {
           { class: "prose" },
           h("h3", {}, "玩法"),
           "沿赛道行驶，越过终点线即完成赛段或比赛。驶出沥青后会被限速（OSK 的越界速度），撞护栏会损失速度。",
+          h("br"),
+          "弯道辅助默认开启：根据前方弯道提前制动，接近路肩时轻微纠偏。你仍需控制方向，紧急时可继续踩刹车；悬浮、腾空和逆行时不介入。可在赛事设置切换手动驾驶，两种模式分开记录成绩。",
           h("br"),
           "倒车：车速归零后持续按住刹车 2 秒进入 R 挡，继续按住即可倒车，最高 5 km/h。松开刹车会重置计时，踩油门可恢复前进。",
           h("br"),
@@ -525,6 +538,7 @@ Three.js、Vite、TypeScript。声音由 Web Audio 实时合成，未使用音�
         h("div", { class: "speedo" }, this.speedCanvas,
           h("div", { class: "speedo-readout" }, slots, h("span", { class: "v", id: "speed" }, "000"), h("span", { class: "u" }, "km/h"), h("span", { class: "gear", id: "gear" }, "D")),
           h("div", { class: "reverse-status", id: "reverse-status", "aria-live": "polite" }),
+          h("div", { class: "assist-status", id: "assist-status" }),
           h("div", { class: "telemetry" }, h("span", { id: "alt" }), h("span", { id: "grade" })))),
       h("div", { class: "profile" }, this.profCanvas),
       h("div", { class: "hint", id: "hint" }, "W 加速  ·  S 刹车 / 停稳长按 2 秒倒车  ·  A / D 转向"),
@@ -533,6 +547,7 @@ Three.js、Vite、TypeScript。声音由 Web Audio 实时合成，未使用音�
       h("div", { class: "warn hidden", id: "warn" }, "逆行！按 R 回到检查点"),
       h("div", { id: "fps" }));
     this.root.append(this.hud);
+    this.els["assist-status"] = this.hud.querySelector("#assist-status")!;
     for (const id of ["vehicle-badge", "flight-panel", "flight-state", "flight-meter", "flight-fill", "flight-charge", "flight-alt", "pos", "pos-of", "pos-card", "time", "best", "delta", "sector", "remain", "standings", "speed", "alt", "grade", "center", "toast", "warn", "slots", "fps", "hint", "gear", "race-progress", "reverse-status"]) this.els[id] = this.hud.querySelector(`#${id}`)!;
     this.touchHost = h("div", { class: "touch" });
     this.hud.append(this.touchHost);
@@ -716,6 +731,10 @@ Three.js、Vite、TypeScript。声音由 Web Audio 实时合成，未使用音�
     const lap = co.laps > 1 ? `第 ${Math.min(co.laps, p.lapTimes.length + 1)}/${co.laps} 圈 · ` : "";
     this.els.remain.textContent = `${lap}剩余 ${(remain / 1000).toFixed(2)} km · ${camLabel}`;
     // speed
+    const assist = race.player.brain instanceof UserBrain ? race.player.brain.assist : undefined;
+    const assistStatus = this.els["assist-status"];
+    assistStatus.textContent = assist ? (!k.grounded ? "弯道辅助 · 落地后恢复" : assist.braking ? `辅助制动 · 目标 ${Math.round(assist.targetSpeed * 3.6)} km/h` : assist.recovering ? "弯道辅助 · 路肩纠偏" : "弯道辅助 · 就绪") : "手动驾驶";
+    assistStatus.classList.toggle("active", !!assist?.braking || !!assist?.recovering);
     if (k.flightEnabled) {
       const charge = Math.round(k.flightCharge * 100);
       this.els["flight-fill"].style.width = `${charge}%`;
