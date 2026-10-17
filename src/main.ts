@@ -185,7 +185,7 @@ async function boot() {
 
   ui.buildScreens({ buildings: world.buildings.length, trees: treesRaw.byteLength / 8 });
   ui.setLoading(1, "完成");
-  ui.show("title");
+  ui.show(new URLSearchParams(location.search).get("setup") === "1" ? "setup" : "title");
 
   // ---------------------------------------------------------------- game state
   const controls = new Controls();

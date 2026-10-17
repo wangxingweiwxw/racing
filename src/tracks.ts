@@ -2,6 +2,7 @@
 // Geometry, sectors and scenery come from public/data/<id>/ (tools/build_data.py <id>).
 import type { Track } from "./track";
 import type { Course } from "./race/race";
+import { singleLapCourse } from "./race/rules.ts";
 
 export interface TrackInfo {
   id: string;
@@ -34,7 +35,6 @@ export interface TrackInfo {
 const OSM = `© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a>，ODbL`;
 const TILES = `<a href="https://registry.opendata.aws/terrain-tiles/" target="_blank" rel="noopener">AWS Terrain Tiles</a>（Terrarium，Mapzen；源数据包括 SRTM、EU-DEM 等）`;
 
-const sectorS = (track: Track, name: string) => track.sectors.find((x) => x.name === name)!.s;
 
 const NORDSCHLEIFE: TrackInfo = {
   id: "nordschleife",
@@ -43,7 +43,7 @@ const NORDSCHLEIFE: TrackInfo = {
   labelSub: "德国 · 20.75 km · 绿色地狱",
   kicker: "Open Street Kart · 纽博格林",
   tagline: "在真实还原的“绿色地狱”上驾驶卡丁车。赛道、地形、森林与村庄全部由 OpenStreetMap 和高程数据生成。",
-  setupSub: "选择模式、车型与赛段。北环全圈 20.75 km，分段赛约 4–6 km。",
+  setupSub: "纽北单圈冲刺 · 20.75 km。选择车型；对手赛固定 3 位同车型 AI。",
   freeModeDesc: "Touristenfahrten：没有对手和道具，熟悉 73 个弯道",
   helpTips: "检查点每 250 m 一个，按 R 回到最近的检查点。Flugplatz、Sprunghügel、Pflanzgarten 等坡顶可以飞跃。",
   creditsMap: `赛道、建筑、道路、森林与地表分类：${OSM}。北环取自 OSM relation 38566（Nürburgring Nordschleife），经 Overpass API 获取。`,
@@ -53,22 +53,9 @@ const NORDSCHLEIFE: TrackInfo = {
     [String(Math.round(track.data.elevation.max - track.data.elevation.min)), "m 落差"],
   ],
   courses(track) {
-    const L = track.length;
-    const parts: [string, string, string, string][] = [
-      ["s1", "第一段 · Hatzenbach", "T13", "Adenauer Forst"],
-      ["s2", "第二段 · Adenauer Forst", "Adenauer Forst", "Bergwerk"],
-      ["s3", "第三段 · Bergwerk", "Bergwerk", "Hohe Acht"],
-      ["s4", "第四段 · Hohe Acht", "Hohe Acht", "T13"],
-    ];
-    const courses: Course[] = [{ id: "full", name: "北环全圈", sub: "T13 → T13 · Touristenfahrten 圈", startS: 0, distance: L, laps: 1 }];
-    for (const [id, name, a, b] of parts) {
-      const sa = a === "T13" ? 0 : sectorS(track, a);
-      const sb = b === "T13" ? L : sectorS(track, b);
-      courses.push({ id, name, sub: `${a} → ${b}`, startS: sa, distance: sb - sa, laps: 0 });
-    }
-    return courses;
+    return [singleLapCourse("nordschleife", track.length)];
   },
-  defaultCourse: "s1",
+  defaultCourse: "full",
   flyoverSector: "Hatzenbach",
   spectators: ["Hatzenbach", "Flugplatz", "Adenauer Forst", "Breidscheid", "Bergwerk", "Karussell", "Wippermann", "Brünnchen", "Pflanzgarten", "Schwalbenschwanz", "Galgenkopf"].map((n) => ({
     sector: n,
@@ -90,7 +77,7 @@ const SHANGHAI: TrackInfo = {
   labelSub: "中国 · 5.45 km · F1 中国大奖赛",
   kicker: "Open Street Kart · F1 中国大奖赛",
   tagline: "在 F1 中国大奖赛的“上”字形赛道上驾驶卡丁车：T1–T2 蜗牛弯、T6 与 T14 发夹弯、1.2 km 后直道。赛道、看台、湖泊与河道由 OpenStreetMap 数据生成。",
-  setupSub: "选择模式、车型与圈数。上海国际赛车场一圈 5.45 km，16 个弯角，顺时针行驶。",
+  setupSub: "上海 F1 单圈冲刺 · 5.45 km。选择车型；对手赛固定 3 位同车型 AI。",
   freeModeDesc: "没有对手和道具，熟悉 16 个弯角与刹车点",
   helpTips: "检查点每 250 m 一个，按 R 回到最近的检查点。T1–T2 蜗牛弯越收越紧，提早减速；后直道尽头的 T14 发夹弯是最佳超车点。",
   creditsMap: `赛道、看台、建筑、道路、湖泊与河道：${OSM}。赛道取自 OSM relation 2094941（Shanghai International Circuit）与发车线节点 1686043686，经 Overpass API 获取。弯角编号按 F1 官方（T1–T16）。`,
@@ -100,11 +87,9 @@ const SHANGHAI: TrackInfo = {
     ["1.2", "km 后直道"],
   ],
   courses(track) {
-    const L = track.length;
-    const lap = (id: string, laps: number, name: string): Course => ({ id, name, sub: `发车线 → 发车线 · ${laps} 圈`, startS: 0, distance: L * laps, laps });
-    return [lap("sh-1", 1, "单圈冲刺"), lap("sh-3", 3, "3 圈赛"), lap("sh-5", 5, "5 圈赛")];
+    return [singleLapCourse("shanghai", track.length)];
   },
-  defaultCourse: "sh-3",
+  defaultCourse: "sh-1",
   flyoverSector: "主直道",
   spectators: [
     { sector: "主直道", offset: 140, length: 300 },

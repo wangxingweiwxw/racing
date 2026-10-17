@@ -16,6 +16,9 @@ import { KartLook, KartModel } from "./kartModel";
 import { GameAudio } from "../audio";
 import { recordSuffix, vehicleMaxSpeedMps, type VehicleId } from "./vehicles";
 
+import { PAINTS, validPaint } from "./paints";
+import { RACE_BOTS, singleLapCourse } from "./rules";
+
 const OUT_OF_BOUNDS_SPEED = 11 * 1.8;
 
 export interface Course {
@@ -61,8 +64,6 @@ const LIVERIES: KartLook[] = [
   { color: 0x06d6a0, accent: 0x073b4c, helmet: 0xef476f, number: 8 },
   { color: 0xef476f, accent: 0x2b2d42, helmet: 0xffffff, number: 66 },
 ];
-export const PLAYER_COLORS = [0xe63946, 0x1e64c8, 0xffbe0b, 0x2a9d8f, 0x8338ec, 0xf4f4f4, 0x111111, 0xff7b00];
-
 export interface RaceOptions {
   assist?: boolean;
   vehicle?: VehicleId;
@@ -112,13 +113,17 @@ export class Race {
     private audio: GameAudio,
     scene: THREE.Scene,
   ) {
+    opts.vehicle = opts.vehicle === "roadster" ? "roadster" : "u9x";
+    opts.playerColor = validPaint(opts.vehicle, opts.playerColor);
+    opts.bots = RACE_BOTS;
+    opts.course = singleLapCourse(opts.course.id.startsWith("sh-") ? "shanghai" : "nordschleife", track.length);
     this.group.name = "race";
     scene.add(this.group);
     this.group.add(this.smoke.points, this.glow.points, this.skids.mesh);
     scene.traverse((o) => {
       if (o.name.startsWith("start-lamp-")) this.startLamps.push(o as THREE.Mesh);
     });
-    const nBots = opts.mode === GameMode.VERSUS ? opts.bots : 0;
+    const nBots = opts.mode === GameMode.VERSUS ? RACE_BOTS : 0;
     // grid: OSK PlayerSpawner places karts in two columns behind the line
     const total = nBots + 1;
     const playerSlot = opts.mode === GameMode.VERSUS ? Math.max(0, total - 3) : 0;
@@ -130,7 +135,7 @@ export class Race {
       const s = opts.course.startS - 6 - row * 8 - (col > 0 ? 3 : 0);
       const lat = col * 2.4;
       const kart = new Kart(track);
-      const vehicle = isPlayer ? opts.vehicle ?? "u9x" : "u9x";
+      const vehicle = opts.vehicle;
       kart.flightEnabled = vehicle === "roadster";
       if (kart.flightEnabled) { kart.halfWidth = 1.08; kart.halfLength = 2.4; }
       const maxSpeed = vehicleMaxSpeedMps(vehicle);
@@ -138,7 +143,7 @@ export class Race {
       kart.outOfBoundsSpeed = OUT_OF_BOUNDS_SPEED;
       kart.accel = 8 + maxSpeed * 0.12;
       kart.placeAt(track.wrapS(s), lat, track.deltaS(opts.course.startS, track.wrapS(s)));
-      const look: KartLook = isPlayer ? { color: opts.playerColor, accent: 0x15171c, helmet: 0xf2f2f2, number: 1 } : LIVERIES[(botIdx + 1) % LIVERIES.length];
+      const look: KartLook = isPlayer ? { color: opts.playerColor, accent: 0x15171c, helmet: 0xf2f2f2, number: 1 } : { ...LIVERIES[(botIdx + 1) % LIVERIES.length], color: PAINTS[vehicle][(botIdx + 1) % PAINTS[vehicle].length].color };
       const model = new KartModel(look, isPlayer, vehicle);
       this.group.add(model.root);
       let brain: Brain;

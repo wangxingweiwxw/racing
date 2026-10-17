@@ -4,13 +4,16 @@ import "./style.css";
 import "./race-hud.css";
 import { icon } from "./icons";
 import { Track } from "../track";
-import { Course, PLAYER_COLORS, Race, Racer } from "../race/race";
+import { Course, Race, Racer } from "../race/race";
 import { GameMode, SlotItem } from "../race/items";
 import { BASE } from "../world/assets";
 import { Settings } from "../settings";
 import { TrackInfo, TRACKS, switchTrack } from "../tracks";
 import { VEHICLES, recordSuffix, type VehicleId } from "../race/vehicles";
 import { UserBrain } from "../race/brain";
+
+import { PAINTS, PAINT_SOURCES, validPaint } from "../race/paints";
+import { RACE_BOTS } from "../race/rules";
 
 type Attrs = Record<string, string | number | boolean | ((e: Event) => void)>;
 export function h(tag: string, attrs: Attrs = {}, ...kids: (Node | string | null | undefined | false)[]): HTMLElement {
@@ -34,7 +37,7 @@ export function fmtTime(t: number, digits = 3): string {
 }
 
 const modeInfo = (info: TrackInfo): { mode: GameMode; t: string; d: string }[] => [
-  { mode: GameMode.VERSUS, t: "对手赛", d: "与 AI 车手同场竞速，道具槽按落后距离补给（OSK Versus）" },
+  { mode: GameMode.VERSUS, t: "对手赛", d: "与 3 位同车型 AI 车手单圈竞速，道具槽按落后距离补给（OSK Versus）" },
   { mode: GameMode.AGAINST_CLOCK, t: "计时赛", d: "挑战个人最佳并与幽灵车对抗（OSK Against Clock）" },
   { mode: GameMode.FREE, t: "自由驾驶", d: info.freeModeDesc },
 ];
@@ -89,8 +92,8 @@ export class UI {
       vehicle: "u9x",
       mode: GameMode.VERSUS,
       course: courses.find((c) => c.id === this.info.defaultCourse) ?? courses[0],
-      color: PLAYER_COLORS[0],
-      bots: 7,
+      color: PAINTS.u9x[0].color,
+      bots: RACE_BOTS,
     };
     try {
       const saved = JSON.parse(localStorage.getItem("nk-choice") || "null");
@@ -99,7 +102,6 @@ export class UI {
         this.choice.vehicle = saved.vehicle === "roadster" ? "roadster" : "u9x";
         this.choice.mode = saved.mode ?? this.choice.mode;
         this.choice.color = saved.color ?? this.choice.color;
-        this.choice.bots = saved.bots ?? this.choice.bots;
       }
       // the course is remembered per track
       const course = localStorage.getItem(`nk-course-${this.info.id}`) ?? saved?.course;
@@ -110,8 +112,8 @@ export class UI {
     const vehicleParam = new URLSearchParams(location.search).get("vehicle");
     if (vehicleParam === "roadster" || vehicleParam === "u9x") {
       this.choice.vehicle = vehicleParam;
-      if (vehicleParam === "roadster") this.choice.color = 0xf4f4f4;
     }
+    this.choice.color = validPaint(this.choice.vehicle, this.choice.color);
   }
 
   // ------------------------------------------------------------------ loading
@@ -254,7 +256,7 @@ export class UI {
         h("div", { class: "group" }, h("label", {}, "模式"), modes),
         h("div", { class: "group vehicle-speed-note" }, h("label", {}, "车型极速"), h("p", { class: "sub" }, "各车型使用对应最高时速；赛道驾驶表现仍受弯道、抓地力和路况影响。")),
         h("div", { class: "group" }, h("label", {}, "驾驶辅助"), assist),
-        h("div", { class: "group" }, h("label", {}, this.courses.some((co) => co.laps > 1) ? "圈数" : "赛段"), courses),
+        h("div", { class: "group" }, h("label", {}, "赛程"), courses),
         botsGroup,
         h("div", { class: "group" }, h("label", {}, "车身颜色"), colors),
         h(
@@ -272,6 +274,8 @@ export class UI {
   private refreshSetup() {
     const e = this.setupEls!;
     const c = this.choice;
+    c.bots = RACE_BOTS;
+    c.color = validPaint(c.vehicle, c.color);
     e.assist.replaceChildren(...[true, false].map(enabled => h("button", {
       class: `opt ${c.assist === enabled ? "on" : ""}`, "data-assist": String(enabled), "aria-pressed": String(c.assist === enabled),
       onclick: () => { c.assist = enabled; this.refreshSetup(); },
@@ -279,7 +283,7 @@ export class UI {
     h("div", { class: "d" }, enabled ? "提前制动，路肩轻微纠偏；仍需控制转向。辅助成绩单独记录。" : "自行判断刹车点与转向，保留原有成绩。"))));
     e.vehicles.replaceChildren(...(Object.keys(VEHICLES) as VehicleId[]).map(id => {
       const v = VEHICLES[id];
-      return h("button", { class: `opt vehicle-option ${c.vehicle === id ? "on" : ""}`, "data-vehicle": id, "aria-pressed": c.vehicle === id ? "true" : "false", onclick: () => { if (c.vehicle !== id && id === "roadster") c.color = 0xf4f4f4; c.vehicle = id; this.refreshSetup(); } },
+      return h("button", { class: `opt vehicle-option ${c.vehicle === id ? "on" : ""}`, "data-vehicle": id, "aria-pressed": c.vehicle === id ? "true" : "false", onclick: () => { c.vehicle = id; c.color = validPaint(id, c.color); this.refreshSetup(); } },
         h("small", {}, v.brand), h("div", { class: "t" }, v.name), h("div", { class: "d" }, v.description));
     }));
     e.modes.replaceChildren(
@@ -306,21 +310,25 @@ export class UI {
     );
     e.botsGroup.classList.toggle("hidden", c.mode !== GameMode.VERSUS);
     e.bots.replaceChildren(
-      ...[3, 5, 7].map((n) => h("button", { class: `opt ${c.bots === n ? "on" : ""}`, onclick: () => ((c.bots = n), this.refreshSetup()) }, h("div", { class: "t" }, `${n} 位 AI 车手`))),
+      ...[RACE_BOTS].map((n) => h("button", { class: `opt ${c.bots === n ? "on" : ""}`, onclick: () => ((c.bots = n), this.refreshSetup()) }, h("div", { class: "t" }, `${n} 位同车型 AI 车手`))),
     );
     e.colors.replaceChildren(
-      ...PLAYER_COLORS.map((col) =>
+      ...PAINTS[c.vehicle].map(paint =>
         h("button", {
-          class: `sw ${c.color === col ? "on" : ""}`,
-          style: `background:#${col.toString(16).padStart(6, "0")}`,
-          "aria-label": `color ${col.toString(16)}`,
-          onclick: () => ((c.color = col), this.refreshSetup()),
-        }),
+          class: `paint-option ${c.color === paint.color ? "on" : ""}`,
+          "data-paint": paint.name, "aria-pressed": String(c.color === paint.color),
+          onclick: () => { c.color = paint.color; this.refreshSetup(); },
+        }, h("i", { style: `background:#${paint.color.toString(16).padStart(6, "0")}`, "aria-hidden": "true" }), paint.name),
       ),
+      h("p", { class: "paint-note" }, c.vehicle === "roadster" ? "当前仅开放官网展示的 Ano White。" : "采用 U9 官网展示的车身配色。",
+        h("a", { href: PAINT_SOURCES[c.vehicle], target: "_blank", rel: "noopener" }, "官网配色 ↗")),
     );
   }
 
   private start() {
+    this.choice.bots = RACE_BOTS;
+    this.choice.course = this.courses[0];
+    this.choice.color = validPaint(this.choice.vehicle, this.choice.color);
     try {
       localStorage.setItem("nk-choice", JSON.stringify({ assist: this.choice.assist, vehicle: this.choice.vehicle, mode: this.choice.mode, course: this.choice.course.id, color: this.choice.color, bots: this.choice.bots }));
       localStorage.setItem(`nk-course-${this.info.id}`, this.choice.course.id);

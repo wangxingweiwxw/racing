@@ -69,3 +69,13 @@
   body #place {display:none;}
   body #start .grid {display:none;}
 }
+/* Small, scrollable circuit chooser on both phone orientations. */
+#circuit-select { box-sizing:border-box; width:min(440px,calc(100% - 32px)); max-height:calc(100dvh - 32px); overflow:auto; padding:24px; border:1px solid #6dc8e588; border-radius:20px; background:#132334; color:#edf7ff; }
+#circuit-select::backdrop { background:#07111dcc; }
+#circuit-select h2 { margin:0 0 10px; }
+#circuit-select p { font-size:13px; color:#b9ccdc; line-height:1.7; }
+#circuit-select a { display:flex; flex-direction:column; gap:7px; padding:16px; margin:12px 0; background:#20394c; border:1px solid #75cce660; border-radius:12px; text-decoration:none; color:#fff; }
+#circuit-select a:hover { background:#2b4c60; }
+#circuit-select span { font-size:12px; color:#bcdae8; }
+#circuit-select button, [data-open-circuits] { cursor:pointer; }
+#circuit-select form button, .mode-note [data-open-circuits] { padding:10px 14px; border:1px solid #72cbe680; border-radius:8px; background:#20394c; color:#d2efff; }

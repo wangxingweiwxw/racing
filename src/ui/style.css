@@ -398,18 +398,11 @@ button {
   flex-wrap: wrap;
 }
 
-.sw {
-  width: 36px;
-  height: 36px;
-  flex: 0 0 36px;
-  border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.2);
-}
-
-.sw.on {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(255, 212, 0, 0.35);
-}
+.paint-option { display:flex; align-items:center; gap:9px; padding:10px 14px; min-height:44px; border:1px solid #ffffff40; border-radius:10px; background:#182129; color:var(--text); }
+.paint-option i { width:24px; height:24px; border-radius:50%; border:1px solid #ffffff60; }
+.paint-option.on { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent); }
+.paint-note { flex-basis:100%; font-size:12px; color:var(--muted); margin:0; }
+.paint-note a { margin-left:8px; }
 
 .row-end {
   display: flex;

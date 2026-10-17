@@ -7,6 +7,7 @@ const origin = process.env.BASE_URL || 'http://127.0.0.1:5173';
   try {
     const page=await browser.newPage({viewport:{width:1440,height:1000},deviceScaleFactor:1});
     const errors=[]; page.on('pageerror',e=>errors.push(e.message));
+    await page.route('https://fonts.googleapis.com/**',route=>route.abort());
     await page.goto(`${origin}/?track=shanghai&manual`,{waitUntil:'domcontentloaded'});
     try { await page.waitForFunction(()=>window.__nk,null,{timeout:180000}); }
     catch(e) { console.error('BOOT',await page.locator('body').innerText(),errors); throw e; }
@@ -71,7 +72,7 @@ const origin = process.env.BASE_URL || 'http://127.0.0.1:5173';
     // Verify independent records and original U9 still works after disposal.
     await page.evaluate(()=>{const g=window.__nk;localStorage.setItem(`nk-best-${g.race.recordId}`,'19');});
     await page.evaluate(()=>{const g=window.__nk;g.startRace({...g.ui.choice,vehicle:'u9x',mode:1,bots:7});g.advance(480,1/60,false);});
-    assert.equal(await page.evaluate(()=>window.__nk.race.racers.length),8);
+    assert.equal(await page.evaluate(()=>window.__nk.race.racers.length),4);
     assert.equal(await page.evaluate(()=>window.__nk.race.player.kart.flightEnabled),false);
     assert.ok(Math.abs(await page.evaluate(()=>window.__nk.race.player.kart.maxSpeed*3.6)-496.22)<1e-6);
     assert.notEqual(await page.evaluate(()=>window.__nk.race.bestTime()),19);
@@ -95,7 +96,7 @@ const origin = process.env.BASE_URL || 'http://127.0.0.1:5173';
     assert.notEqual(await page.evaluate(()=>window.__nk.race.recordId),assistedKey);
     assert.equal(await page.locator('#assist-status').innerText(),'手动驾驶');
     await page.evaluate(()=>{const g=window.__nk;g.startRace({...g.ui.choice,vehicle:'roadster',mode:1,bots:7});g.advance(480,1/60,false);g.advance(1);});
-    assert.equal(await page.evaluate(()=>window.__nk.race.racers.length),8);
+    assert.equal(await page.evaluate(()=>window.__nk.race.racers.length),4);
     for(const [width,height] of [[844,390],[390,844],[320,640]]) {
       await page.setViewportSize({width,height});
       // Wait for the resize event before manually rendering, otherwise canvas resizing clears the frame.
@@ -118,6 +119,6 @@ const origin = process.env.BASE_URL || 'http://127.0.0.1:5173';
       await page.screenshot({path:`checks/roadster-${width}.png`,timeout:120000});
     }
     assert.deepEqual(errors,[]);
-    console.log(JSON.stringify({result:'PASS',flying,browserErrors:errors,checks:'selection, assist toggle, predictive braking, manual mode, drive, flight, landing, pointer, pause, records, restart, mixed grid, mobile'},null,2));
+    console.log(JSON.stringify({result:'PASS',flying,browserErrors:errors,checks:'selection, assist toggle, predictive braking, manual mode, drive, flight, landing, pointer, pause, records, restart, same-model grid, mobile'},null,2));
   } finally {await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

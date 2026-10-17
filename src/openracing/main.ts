@@ -505,7 +505,18 @@ function frame(now: number): void {
 // ---------- 界面 ----------
 const startEl = document.getElementById('start')!;
 const goBtn = document.getElementById('go') as HTMLButtonElement;
+const circuitDialog = document.getElementById('circuit-select') as HTMLDialogElement;
+document.querySelectorAll('[data-open-circuits]').forEach(button => button.addEventListener('click', () => {
+  paused = true;
+  input.clear();
+  circuitDialog.showModal();
+}));
+circuitDialog.addEventListener('close', () => {
+  paused = !startEl.classList.contains('hidden') || document.hidden;
+  input.clear();
+});
 function toggleHelp(): void {
+  if (circuitDialog.open) return;
   if (!started) return;
   startEl.classList.toggle('hidden');
   paused=!startEl.classList.contains('hidden');input.clear();

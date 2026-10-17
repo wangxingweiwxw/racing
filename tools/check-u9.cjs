@@ -7,6 +7,7 @@ const origin = process.env.BASE_URL || 'http://127.0.0.1:5173';
  try {
  const page = await browser.newPage({viewport:{width:1440,height:1080},deviceScaleFactor:1});
  const errors=[]; page.on('pageerror',e=>errors.push(e.message));
+    await page.route('https://fonts.googleapis.com/**',route=>route.abort());
  await page.goto(`${origin}/?track=shanghai&manual`,{waitUntil:'domcontentloaded'});
  await page.waitForFunction(()=>window.__nk,{timeout:180000});
  await page.evaluate(()=>{const g=window.__nk;g.startRace({...g.ui.choice,mode:0});g.advance(480,1/60,false);g.advance(1)});
@@ -58,7 +59,7 @@ const origin = process.env.BASE_URL || 'http://127.0.0.1:5173';
  await page.evaluate(()=>window.__nk.ui.onResume());
  // Restart verifies cached geometry survives disposal of the previous race.
  await page.evaluate(()=>{const g=window.__nk;g.rig.mode='chase';g.startRace({...g.ui.choice,mode:1,bots:7});g.advance(480,1/60,false);g.advance(1)});
- assert.equal(await page.evaluate(()=>window.__nk.race.racers.length),8);
+ assert.equal(await page.evaluate(()=>window.__nk.race.racers.length),4);
  await page.screenshot({path:'checks/u9-versus.png',timeout:120000});
  await page.setViewportSize({width:844,height:390});await page.evaluate(()=>window.__nk.advance(1));
  await page.screenshot({path:'checks/u9-mobile.png',timeout:120000});

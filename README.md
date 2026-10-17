@@ -11,8 +11,8 @@
 
 ## 开放街道 openracing
 
-主菜单新增「开放街道」入口，也可直接进入 [openracing](https://racing.chipai.cc/openracing/)。
-将用户提供的 `hupiao/` 街道场景和玩法整合为同一项目的第二入口：南京东路、外滩、黄浦江和陆家嘴，
+根地址默认进入开放街道，忽略上次保存的赛道选择。街道的「赛道」按钮可选择上海 F1 或纽北，进入赛事设置选择车型和配色；也可直接进入 [openracing](https://racing.chipai.cc/openracing/)。
+将用户提供的 `hupiao/` 街道场景和玩法整合为同一项目的默认入口：南京东路、外滩、黄浦江和陆家嘴，
 包括车流、路段探索、拍照点、计时挑战、漂移连击、贴墙行驶与飞越河道。
 城市为概括的程序化布局，并非实测上海道路。
 
@@ -94,13 +94,13 @@ Roadster 动力悬浮和松开后的降落阶段仍有转向纠偏，预测距�
 新增模型由 `src/race/roadsterModel.ts` 按用户提供的 `6258.mp4` 原创重建：白色楔形车身、
 连续黑色玻璃顶、窄侧窗、后翼子板三角面、梯形黑色尾板、贯穿红灯和白色贴合式尾翼。
 四轮独立转向与旋转，喷口收进底盘；独立户外反射环境避免玻璃出现室内灯带。
-选择 Roadster 时默认视频同款白色，仍可使用现有色板换色。
+车身配色按车型限制，旧存档中的无效颜色自动恢复为该车型默认色。
 
 Roadster 按住 **空格 / 手柄 LB / 屏幕悬浮按钮** 升空；WASD 仍负责驾驶。
 松开或推进剂耗尽后自动降落。满槽可供约 4 秒动力悬浮，目标高度约 3.5 m；
 落地并松开悬浮键后约 10 秒充满，至少 25% 才能起飞。悬浮保留赛道走廊边界，
 不支持跨地图自由飞行。桌面 HUD 显示推进剂、离地高度和状态；手机使用贴边的氮气瓶图示与百分比，瓶内液位随推进剂下降，低于 25% 时变黄。
-两款车的成绩、分段及幽灵车分别保存，AI 继续驾驶 U9，可与 Roadster 同场。
+两款车的成绩与幽灵车分别保存。对手赛固定 3 位同车型 AI（含玩家共 4 辆）；上海和纽北只提供完整单圈冲刺，旧的多圈和分段选择自动迁移。计时赛与自由驾驶仍可选。
 
 独立模型位于 `public/models/roadster/roadster.glb`，可用 Blender 等软件打开；
 修改程序化几何后运行 `npm run model:roadster` 重新导出。游戏直接使用同一几何源。
@@ -156,7 +156,7 @@ npm run test:car
 
 | 项目 | 内容 |
 | --- | --- |
-| 模式 | 对手赛（Versus，3/5/7 个 AI）、计时赛（Against Clock，幽灵车）、自由驾驶 |
+| 模式 | 对手赛（Versus，固定 3 个同车型 AI）、计时赛（Against Clock，幽灵车）、自由驾驶 |
 | 车型极速 | 仰望 U9 Xtreme：[496.22 km/h](https://www.byd.com/mea/news-list/yangwang-u9-xtreme-is-the-worlds-fastest-production-car-with-top-speed-of-496kmh)（实测纪录）；Tesla Roadster 2：[超过 230 mph](https://live.euronext.com/en/financial-news/tesla-unveils-next-generation-roadster-sports-ev-spacex-thrusters)，游戏以 370.15 km/h（230 mph 换算值）设定 |
 | 速度限制 | 移除四档选择；赛道内按当前车型极速封顶。离开赛道仍保留较低的街机惩罚限速 |
 | 道具 | 空投炸弹（16 m 爆炸半径）；落后越多补给越快 |
@@ -187,7 +187,7 @@ OSK 是 Godot 4.6 桌面工程，依赖 Terrain3D、Debug Draw 3D 等原生扩�
 
 ## 数据管线
 
-每条赛道的配置（OSM 来源、坐标范围、路宽、弯角名称、倾斜弯、坡顶等）在 `tools/tracks.py`，前端的文案、赛段 / 圈数、看台位置在 `src/tracks.ts`。
+每条赛道的配置（OSM 来源、坐标范围、路宽、弯角名称、倾斜弯、坡顶等）在 `tools/tracks.py`，前端的文案、单圈赛程、看台位置在 `src/tracks.ts`。
 
 ```bash
 python3 tools/fetch_data.py shanghai   # 下载 Overpass 数据与高程瓦片（已有的文件会跳过）
@@ -222,3 +222,10 @@ python3 tools/build_textures.py        # 需要 ../open-street-kart（或 OSK_DI
 - 高程：AWS Terrain Tiles（Mapzen）
 
 完整署名见 `public/credits.txt` 与游戏内“致谢与许可”。
+
+### 官网配色（2026-10-17 核查）
+
+- [仰望 U9 官网](https://www.yangwangauto.com/u9-detail-page.html)的外观选择器：阿盖尔紫、赤霞丹朱、月曜银、极境森林。将 U9 车系配色应用到游戏已有的 U9 Xtreme 模型，并不声明为 Xtreme 独立订购清单。
+- [Tesla 新 Roadster 官网](https://www.tesla.com/el_GR/roadster)展示的颜色为 **Ano White**，目前游戏只开放这一已核实展示色，不使用旧款 Roadster 的维修色表或其他 Tesla 车型色板，也不声明为完整量产可订购色单。
+- RGB 是游戏渲染近似值，并非厂家油漆编码。玩家与 AI 都使用对应车型的有效颜色。
+- `npm run test:setup` 检查完整单圈和配色迁移；`tools/check-setup.cjs` 检查默认入口、手机赛道选择、两条赛道的旧存档、四车同车型阵容以及所有选项实际应用到车漆材质。

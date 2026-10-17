@@ -15,7 +15,8 @@
     "test:car": "node --experimental-transform-types --test tools/carCollision.test.mjs tools/driving.test.mjs tools/flight.test.mjs tools/assist.test.mjs",
     "deploy:pages": "npm run build && npx wrangler@4.147.0 pages deploy dist --project-name racing-wangxingweiwxw --branch main",
     "deploy:worker": "npx wrangler@4.147.0 deploy",
-    "deploy": "npm run test:car && npm run test:openracing && npm run test:worker && npm run deploy:pages && npm run deploy:worker"
+    "deploy": "npm run test:setup && npm run test:car && npm run test:openracing && npm run test:worker && npm run deploy:pages && npm run deploy:worker",
+    "test:setup": "node --experimental-transform-types --test tools/setup.test.mjs"
   },
   "dependencies": {
     "three": "^0.186.1"

@@ -169,7 +169,7 @@
   <body>
     <canvas id="c"></canvas>
     <div id="hud">
-      <div id="notice" class="glass"><i></i><div><b>Roadster 2 · 极光白</b><span>开放街道 openracing</span></div></div>
+      <div id="notice" class="glass"><i></i><div><b>Roadster 2 · Ano White</b><span>开放街道 openracing</span></div></div>
 
       <div id="objective" class="glass" data-kind="photo">
         <div id="obj-icon">◉</div>
@@ -185,7 +185,7 @@
           <button type="button" id="b-help">帮助<kbd>H</kbd></button>
           <button type="button" id="b-mute">静音<kbd>M</kbd></button>
           <button type="button" id="b-reset" aria-label="扶正复位">复位</button>
-          <a id="back-racing" href="../">赛道</a>
+          <button id="back-racing" type="button" data-open-circuits>赛道</button>
         </div>
         <div id="cash" class="glass"><span class="caps">现金</span><span id="cash-val">¥0</span></div>
         <div id="cash-delta"></div>
@@ -242,9 +242,16 @@
           <div class="k"><kbd>M</kbd> · <kbd>H</kbd></div><div>静音 · 帮助</div>
         </div>
         <button id="go" disabled>生成上海中…</button>
-        <p class="mode-note">手机使用两侧按键驾驶。吸附、腾空及翻滚为视频启发的街机玩法；城市为概括布局。<a href="../">返回赛道竞速</a></p>
+        <p class="mode-note">手机使用两侧按键驾驶。吸附、腾空及翻滚为视频启发的街机玩法；城市为概括布局。<button type="button" data-open-circuits>选择赛道竞速</button></p>
       </div>
     </div>
+    <dialog id="circuit-select" aria-labelledby="circuit-title">
+      <h2 id="circuit-title">选择赛道</h2>
+      <p>单圈冲刺 · 对手赛为 3 位同车型 AI<br>进入后选择仰望 U9 或 Roadster 2 和车身颜色。</p>
+      <a href="../?track=shanghai&amp;setup=1" data-track="shanghai"><b>上海 F1 赛道</b><span>5.45 km · 16 个弯角</span></a>
+      <a href="../?track=nordschleife&amp;setup=1" data-track="nordschleife"><b>纽博格林北环</b><span>20.75 km · 绿色地狱</span></a>
+      <form method="dialog"><button>返回开放街道</button></form>
+    </dialog>
     <script type="module" src="../src/openracing/main.ts"></script>
   </body>
 </html>
