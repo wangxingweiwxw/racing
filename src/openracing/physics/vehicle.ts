@@ -72,6 +72,8 @@ export const TUNING = {
   hopCost: 40,
   hoverCost: 48,
   boostCost: 26,
+  brakeJetAccel: 20,
+  brakeJetCost: 32,
   rcsAccel: 7,
   rcsDamp: 2.2,
   rcsCost: 4,
@@ -125,6 +127,7 @@ export class Vehicle {
   /** 推进器强度 0..1，给特效和音效用 */
   downThrust = 0;
   mainThrust = 0;
+  brakeThrust = 0;
   rcsPitch = 0;
   rcsYaw = 0;
   rcsRoll = 0;
@@ -133,6 +136,9 @@ export class Vehicle {
   showcase = false;
   stuntRoll = 0;
   landingAssist = false;
+  private flareRange = 0;
+  roofFlight = false;
+  private climbedBuilding = false;
   riverAssist = 0;
   riverCharging = false;
   private riverLane = 0;
@@ -176,8 +182,10 @@ export class Vehicle {
     this.mode = 'air';
     this.groundN.set(0, 1, 0);
     this.showcase=false;this.stuntRoll=0;this.stuntTime=0;this.prevAction=false;
-    this.hoverY=pos.y+3.5;this.landingAssist=false;
+    this.hoverY=pos.y+3.5;this.landingAssist=false;this.flareRange=0;
     this.riverAssist=0;this.riverCharging=false;this.airTime=0;
+    this.roofFlight=false;this.climbedBuilding=false;
+    this.downThrust=this.mainThrust=this.brakeThrust=0;
   }
 
   up(out = new Vector3()): Vector3 {
@@ -214,6 +222,7 @@ export class Vehicle {
     this.events.length = 0;
     this.time += dt;
     this.landingAssist=false;
+    if(this.grounded||inp.hop||this.vel.y>=-2)this.flareRange=0;
     this.riverCharging=false;
     const actionEdge=!!inp.action&&!this.prevAction;this.prevAction=!!inp.action;
     if(actionEdge){
@@ -228,7 +237,7 @@ export class Vehicle {
 
     if (this.mode === 'sunk') {
       this.respawnTimer -= dt;
-      this.downThrust = this.mainThrust = 0;
+      this.downThrust = this.mainThrust = this.brakeThrust = 0;
       if (this.respawnTimer <= 0) this.respawn();
       return this.events;
     }
@@ -252,9 +261,32 @@ export class Vehicle {
     }
     this.prevFan = inp.fan;
 
+    // After climbing a facade, driving past the roof edge launches instead of
+    // wrapping onto the far wall. Stopping on the roof remains possible.
+    if (this.grounded && this.groundN.y < .7 && this.pos.y > 8 && this.fanOn)
+      this.climbedBuilding = true;
+    if (this.climbedBuilding && this.grounded && this.groundN.y > .8 &&
+      this.support && (this.support.tag === 'building' || this.support.tag === 'landmark') &&
+      this.forwardSpeed > 6 && inp.throttle >= 0) {
+      this.fwd(_f).setY(0).normalize();
+      _v.copy(this.pos).addScaledVector(_f, 3);
+      const roof = env.world.raycast(_v, new Vector3(0,-1,0), 3, c=>c.tag==='bound');
+      if (!roof) {
+        this.beginRoofFlight();
+        this.vel.y = Math.max(this.vel.y, 5);
+        this.pos.y += T.snap + .1;
+        this.grounded = false; this.mode = 'air'; this.support = null;
+        this.hoverY = this.pos.y + 3.5;
+        this.push('takeoff'); this.push('detach');
+        // One controlled roll, with enough gas left for the landing flare.
+        if (this.air >= 220) { this.stuntTime=Number.EPSILON;this.stuntDirection=1;this.air-=60; }
+      }
+    }
+
     this.acc.set(0, -T.gravity, 0);
     let downTarget = 0;
     let mainTarget = 0;
+    let brakeTarget = 0;
 
     if (this.grounded) {
       this.airTime = 0;
@@ -297,6 +329,7 @@ export class Vehicle {
         this.grounded = false;
         this.hoverY=this.pos.y+3.5;
         this.mode = 'air';
+        if (this.climbedBuilding) this.beginRoofFlight();
         this.push('hop');
       } else this.warnEmpty();
     }
@@ -314,7 +347,7 @@ export class Vehicle {
       this.acc.z+=clamp((this.riverLane-this.pos.z)*.08-this.vel.z*.4,-3,3)*(1-Math.min(1,Math.abs(inp.steer)));
       this.air-=8*dt;mainTarget=Math.max(mainTarget,.5);this.lastThrust=this.time;
     }
-    if (inp.boost) {
+    if (inp.boost && inp.throttle >= 0) {
       if (this.air > 0) {
         let k = 1;
         if (this.grounded) k = clamp(1 - this.vel.dot(_fwd) / T.boostVmax, 0, 1);
@@ -328,18 +361,38 @@ export class Vehicle {
       this.acc.addScaledVector(_fwd,8*inp.throttle);this.air-=8*dt;
       mainTarget=Math.max(mainTarget,.25*inp.throttle);this.lastThrust=this.time;
     }
+    // Forward-facing cold gas adds real deceleration; mechanical brakes still
+    // work with an empty tank. Fade out below 90 km/h and never push into reverse.
+    const forward = this.vel.dot(_fwd);
+    if (inp.throttle < -.1 && forward > 25 && this.air > 0) {
+      brakeTarget = clamp((forward-25)/15,0,1) * -inp.throttle;
+      const fuel = Math.min(this.air,T.brakeJetCost*brakeTarget*dt);
+      brakeTarget = fuel/(T.brakeJetCost*dt);
+      this.acc.addScaledVector(_fwd,-Math.min(T.brakeJetAccel*brakeTarget,forward/dt));
+      this.air-=fuel;this.lastThrust=this.time;
+    }
     const rcs = Math.abs(this.rcsPitch) + Math.abs(this.rcsYaw) + Math.abs(this.rcsRoll);
     if (rcs > 0.01) {
       this.air -= T.rcsCost * rcs * dt;
       this.lastThrust = this.time;
     }
-    // Fuel-limited landing flare near a horizontal roof or street.
-    if(!this.grounded&&this.vel.y<-3&&!inp.hop&&this.air>0){
-      const hit=env.world.raycast(this.pos,new Vector3(0,-1,0),4,(c)=>c.tag==='bound');
+    // Start braking at the stopping distance, not a fixed four metres: a fall
+    // from a skyscraper needs a much earlier flare than an ordinary jump.
+    if(!this.grounded&&this.vel.y<-2&&!inp.hop&&this.air>0){
+      const fall=-this.vel.y;
+      const range=Math.min(500,Math.max(6,this.flareRange,fall*fall/50+fall*dt+8));
+      const hit=env.world.raycast(this.pos,new Vector3(0,-1,0),range,(c)=>c.tag==='bound');
       if(hit&&hit.normal.y>.8){
-        this.landingAssist=true;this.alignUp(hit.normal,1-Math.exp(-dt*9));
-        this.acc.y+=Math.min(26,(-this.vel.y-3)*9)*Math.min(1,this.air/(60*dt));
-        this.air-=Math.min(this.air,60*dt);downTarget=Math.max(downTarget,.65);this.lastThrust=this.time;
+        const clearance=Math.max(0,hit.dist-T.radius);
+        const target=Math.min(40,Math.sqrt(4+32*Math.max(0,clearance-.35)));
+        if(clearance<6||fall>target||this.flareRange>0){
+          this.flareRange=range;
+          this.landingAssist=true;this.alignUp(hit.normal,1-Math.exp(-dt*9));
+          const force=clamp(T.gravity+(fall-target)*18,0,T.gravity+30);
+          const fuel=Math.min(this.air,60*dt);
+          this.acc.y+=force*fuel/(60*dt);
+          this.air-=fuel;downTarget=Math.max(downTarget,force/(T.gravity+30));this.lastThrust=this.time;
+        }
       }
     }
     if (this.air <= 0) this.air = 0;
@@ -349,11 +402,14 @@ export class Vehicle {
     }
     this.downThrust += (downTarget - this.downThrust) * (1 - Math.exp(-(downTarget > this.downThrust ? 20 : 6) * dt));
     this.mainThrust += (mainTarget - this.mainThrust) * (1 - Math.exp(-(mainTarget > this.mainThrust ? 20 : 6) * dt));
+    this.brakeThrust += (brakeTarget-this.brakeThrust)*(1-Math.exp(-20*dt));
 
     // ---- 风扇过热 ----
     const onWall = this.grounded && this.groundN.y < 0.7;
     if (this.fanOn) {
-      this.fanHeat += (onWall ? T.fanHeat : -T.fanCool * 0.5) * dt;
+      // Sustained upward driving cools the fan; lingering still overheats.
+      const climbCooling=onWall&&inp.throttle>.7&&this.vel.y>8 ? .3 : 1;
+      this.fanHeat += (onWall ? T.fanHeat*climbCooling : -T.fanCool * 0.5) * dt;
       if (this.fanHeat >= 1) {
         this.fanHeat = 1;
         this.fanOn = false;
@@ -386,8 +442,18 @@ export class Vehicle {
     } else this.mode = 'air';
 
     if (wasGrounded && !this.grounded) {this.hoverY=this.pos.y+3.5;this.push('takeoff');}
-    if (!wasGrounded && this.grounded) {this.angVel.set(0, 0, 0);this.stuntTime=0;this.stuntRoll=0;}
-    if ((prevMode === 'wall' || prevMode === 'ceiling') && this.mode === 'air') this.push('detach');
+    if (!wasGrounded && this.grounded) {
+      this.angVel.set(0, 0, 0);this.stuntTime=0;this.stuntRoll=0;
+      if(this.groundN.y>.7){this.roofFlight=false;if(this.support?.tag==='ground')this.climbedBuilding=false;}
+    }
+    if ((prevMode === 'wall' || prevMode === 'ceiling') && this.mode === 'air') {
+      if(this.climbedBuilding){
+        this.beginRoofFlight();
+        const outward=this.vel.dot(this.groundN);
+        if(outward<6)this.vel.addScaledVector(this.groundN,6-outward);
+      }
+      this.push('detach');
+    }
 
     // ---- 落水 / 掉出地图 ----
     const r = env.river;
@@ -415,6 +481,11 @@ export class Vehicle {
       this.emptyWarned = true;
       this.push('empty');
     }
+  }
+
+  private beginRoofFlight(): void {
+    this.roofFlight=true;this.climbedBuilding=false;this.fanOn=false;
+    this.angVel.set(0,0,0);this.riverAssist=0;
   }
 
   private sink(): void {
@@ -518,7 +589,8 @@ export class Vehicle {
       this.q.multiply(_q).normalize();
     }
     // 没有输入时缓慢自动摆正，方便落地
-    if (this.airTime > .3 && Math.abs(this.rcsPitch)+Math.abs(this.rcsRoll)<.01) this.alignUp(WORLD_UP, 1-Math.exp(-2.2*dt));
+    if (this.airTime > .15 && (this.roofFlight || Math.abs(this.rcsPitch)+Math.abs(this.rcsRoll)<.01))
+      this.alignUp(WORLD_UP, 1-Math.exp(-(this.roofFlight?5:2.2)*dt));
     if (ctl&&Math.abs(inp.steer)>.01&&!inp.handbrake) {
       this.fwd(_f).setY(0).normalize();
       const speed=Math.hypot(this.vel.x,this.vel.z),blend=1-Math.exp(-.6*dt);

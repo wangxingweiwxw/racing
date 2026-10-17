@@ -32,7 +32,7 @@ void main(){
   });
 }
 
-const MAX_LEN: Record<Socket['kind'], number> = { main: 2.1, down: 1.7, side: .85 };
+const MAX_LEN: Record<Socket['kind'], number> = { main: 2.1, down: 1.7, side: .85, brake: 2.3 };
 
 export class Plumes {
   readonly meshes: Mesh<CylinderGeometry, ShaderMaterial>[] = [];
@@ -42,6 +42,7 @@ export class Plumes {
     this.sockets = sockets;
     for (const s of sockets) {
       const m = new Mesh(plumeGeo, plumeMaterial());
+      m.name = `Cold gas ${s.kind}`;
       m.position.copy(s.pos).addScaledVector(s.dir, 0.08);
       m.quaternion.setFromUnitVectors(new Vector3(0, -1, 0), s.dir);
       m.visible = false;

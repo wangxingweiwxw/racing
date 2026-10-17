@@ -95,7 +95,7 @@ export class Sfx {
     this.motorA.frequency.setTargetAtTime(f, t, tc);
     this.motorB.frequency.setTargetAtTime(f * 2.01, t, tc);
     this.motorGain.gain.setTargetAtTime(v.mode === 'sunk' ? 0 : 0.035 + Math.abs(throttle) * 0.05 + Math.min(sp / 80, 1) * 0.03, t, tc);
-    const thrust = Math.max(v.mainThrust, v.downThrust, Math.min(1, Math.abs(v.rcsYaw) + Math.abs(v.rcsRoll) + Math.abs(v.rcsPitch)) * 0.4);
+    const thrust = Math.max(v.mainThrust, v.downThrust, v.brakeThrust, Math.min(1, Math.abs(v.rcsYaw) + Math.abs(v.rcsRoll) + Math.abs(v.rcsPitch)) * 0.4);
     this.hissGain.gain.setTargetAtTime(thrust * 0.5, t, 0.03);
     this.hissFilter.frequency.setTargetAtTime(1200 + thrust * 2400, t, 0.05);
     this.squealGain.gain.setTargetAtTime(v.drifting && v.grounded ? Math.min(0.35, Math.abs(v.slip) * 0.6) : 0, t, 0.05);

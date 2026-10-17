@@ -205,7 +205,7 @@ export class Hud {
     el.airRing.style.strokeDashoffset = String(RING * (1 - air * 0.25));
     el.airRing.classList.toggle('low', air < 0.2);
     el.airVal.textContent = `${Math.round(v.air)} L`;
-    el.mode.textContent = v.stuntActive?'空中翻滚':v.riverAssist?'跨江辅助':v.riverCharging?'跳台补气':v.landingAssist?'着陆缓冲':v.showcase?'展车':v.mode==='air'?'空中转向辅助':MODE_LABEL[v.mode];
+    el.mode.textContent = v.landingAssist?'喷气软着陆':v.brakeThrust>.1?'前喷气制动':v.stuntActive?'空中翻滚':v.roofFlight?'楼顶飞跃 · 自动翻正':v.riverAssist?'跨江辅助':v.riverCharging?'跳台补气':v.showcase?'展车':v.mode==='air'?'空中转向辅助':MODE_LABEL[v.mode];
     const bottle=$('gas-bottle'),percent=Math.round(v.air/TUNING.tank*100);
     bottle.style.setProperty('--fuel',String(v.air/TUNING.tank));bottle.setAttribute('aria-valuenow',String(percent));bottle.classList.toggle('low',percent<20);$('gas-percent').textContent=percent+'%';
     const action=document.querySelector<HTMLElement>('[data-control=action]');if(action)action.textContent=v.mode==='air'?'翻滚':v.showcase?'收起':'展车';

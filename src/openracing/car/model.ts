@@ -2,7 +2,7 @@
 import { Group, Mesh, CylinderGeometry, MeshStandardMaterial, MeshBasicMaterial, PlaneGeometry, Vector3 } from 'three';
 import { buildRoadster } from '../../race/roadsterModel';
 import { radialTexture } from '../world/textures.ts';
-export type ThrusterKind = 'main' | 'down' | 'side';
+export type ThrusterKind = 'main' | 'down' | 'side' | 'brake';
 export interface Socket { pos: Vector3; dir: Vector3; kind: ThrusterKind; side: number; front: number }
 export const WHEEL_R = .37;
 export function buildCar() {
@@ -13,6 +13,13 @@ export function buildCar() {
   const sockets:Socket[]=[];
   for(const x of [-.68,.68])for(const z of [-1.72,1.65])sockets.push({pos:new Vector3(x,.17,z),dir:new Vector3(0,-1,0),kind:'down',side:Math.sign(x),front:Math.sign(z)});
   for(const x of [-.39,.39])sockets.push({pos:new Vector3(x,.38,-2.29),dir:new Vector3(0,0,-1),kind:'main',side:Math.sign(x),front:-1});
+  const nozzleMaterial=new MeshStandardMaterial({color:0x222b32,metalness:.8,roughness:.25});
+  for(const x of [-.62,.62]){
+    const pos=new Vector3(x,.377,2.39),dir=new Vector3(0,0,1);
+    const nozzle=new Mesh(new CylinderGeometry(.065,.085,.11,16,1,true),nozzleMaterial);
+    nozzle.name='Front braking cold-gas nozzle';nozzle.rotation.x=Math.PI/2;nozzle.position.copy(pos);body.add(nozzle);
+    sockets.push({pos,dir,kind:'brake',side:Math.sign(x),front:1});
+  }
   for(const x of [-.98,.98])for(const z of [-1.6,1.6])sockets.push({pos:new Vector3(x,.48,z),dir:new Vector3(Math.sign(x),0,0),kind:'side',side:Math.sign(x),front:Math.sign(z)});
   const fanDisc=new Mesh(new CylinderGeometry(.42,.42,.025,24),new MeshStandardMaterial({color:0x12191e,emissive:0x2b6c8e,emissiveIntensity:0}));
   fanDisc.position.set(0,.06,-.2);body.add(fanDisc);

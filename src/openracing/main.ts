@@ -246,7 +246,10 @@ function onEvent(e: VehicleEvent): void {
       break;
     case 'attach':
       kick(0.2);
-      if (vehicle.mode === 'wall' || vehicle.mode === 'ceiling') hud.card(vehicle.mode === 'ceiling' ? '倒挂行驶' : '风扇吸附', `2G 吸力 · 约 ${Math.max(1, Math.round((1 - vehicle.fanHeat) * 7))} 秒后过热`, 'good', 1.6);
+      if (vehicle.mode === 'wall' || vehicle.mode === 'ceiling') hud.card(vehicle.mode === 'ceiling' ? '倒挂行驶' : '吸附爬楼', '持续加速上爬可延缓过热 · 驶出楼顶自动翻正着陆', 'good', 2.2);
+      break;
+    case 'detach':
+      if(vehicle.roofFlight)hud.card('楼顶飞跃', '自动翻正 · 接近路面喷气软着陆', 'good', 2);
       break;
     case 'splash':
       crossing = null;
@@ -355,6 +358,7 @@ function updateCarVisual(dt: number, t: number): void {
   car.sockets.forEach((s, i) => {
     let k = 0;
     if (s.kind === 'main') k = v.mainThrust;
+    else if (s.kind === 'brake') k = v.brakeThrust;
     else if (s.kind === 'down') {
       k = v.downThrust;
       k += Math.max(0, s.front < 0 ? v.rcsPitch : -v.rcsPitch) * 0.7;
