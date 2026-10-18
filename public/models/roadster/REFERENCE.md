@@ -50,6 +50,25 @@ Fixed front/side/rear/quarter camera renders were compared before and after chan
 Opening the doors also exposed and helped fix interior/outer-skin intersections.
 The geometry budget is under 24,000 triangles, including cabin and articulated parts.
 
+## October 18 photograph refinement (revision 4)
+
+Nine user-supplied JPGs in `video/roadster2/` were inspected. The 16_24 photo
+shows raised/folded wing mechanisms, 17_24 shows incidence and front lamp shapes,
+11_24 shows road-mode light details, and 13_24 shows the rear light and four nozzle mouths.
+The geometry now includes a chevron wing blade, downward endplates, two folding
+link frames, hinge pins, lift and incidence actuators; deployment and pitch are
+independent. Both game modes share this rig. Cruising at speed raises the wing
+with low incidence; braking increases incidence. These control thresholds remain
+game tuning, not manufacturer specifications.
+
+Front lighting has conforming triangular housings, five individual optics per
+side, a fine nose light guide and amber side markers. Rear lighting has a smoked
+bezel, ruby lens and emissive core, with corner and side returns. Four rear bell
+nozzles, flange bolts and the front braking outlets are shared with the export.
+The package contains GLB/glTF animation clips for doors, low-drag wing deployment
+and airbrake deployment; only one wing clip should play at a time. OBJ is static.
+Current triangle counts and import/validation results are recorded in model-info.json.
+
 ## Scope and confidence
 
 This is ORIGINAL procedural geometry reconstructed by visual comparison with

@@ -42,13 +42,13 @@ export class KartModel {
   private brakeLights: THREE.MeshStandardMaterial[] = [];
   private lastSpeed = 0;
   private jets: THREE.Mesh[] = [];
-  private spoiler: THREE.Group | null = null;
+  private setAeroPose?: (deployment:number,incidence:number)=>void;
   private jetTime = 0;
   private doors: THREE.Group[] = [];
   private yoke?: THREE.Group;
-  private aeroStruts: THREE.Mesh[] = [];
   private doorOpen = 0;
   private wingOpen = 0;
+  private wingAngle = 0;
 
   constructor(look: KartLook, detailed = true, vehicle: VehicleId = "u9x") {
     if (vehicle === "roadster") {
@@ -57,8 +57,8 @@ export class KartModel {
       this.root.add(this.body); this.body.add(parts.car);
       this.wheels.push(...parts.wheels); this.frontPivots.push(...parts.frontPivots);
       this.rearWheelsLocal.push(...parts.rearWheelsLocal);
-      this.brakeLights = parts.brakeLights; this.jets = parts.jets; this.spoiler = parts.spoiler;
-      this.doors = parts.doors; this.yoke = parts.yoke; this.aeroStruts = parts.aeroStruts;
+      this.brakeLights = parts.brakeLights; this.jets = parts.jets; this.setAeroPose = parts.setAeroPose;
+      this.doors = parts.doors; this.yoke = parts.yoke;
       return;
     }
     const template = detailed ? highModel : lowModel;
@@ -155,11 +155,11 @@ export class KartModel {
       jet.visible = thrust;
       jet.scale.y = .8 + .18 * Math.sin(this.jetTime * 37 + i * 1.7);
     });
-    if (this.spoiler) {
-      this.wingOpen += ((state.showcase ? 1 : state.airBrake ?? 0) - this.wingOpen) * (1 - Math.exp(-dt * 7));
-      this.spoiler.position.y = this.spoiler.userData.restY + .06 * this.wingOpen;
-      this.spoiler.rotation.x = .8 * this.wingOpen;
-      for (const strut of this.aeroStruts) { strut.scale.y = .03 + .22 * this.wingOpen; strut.position.y = .96 + .11 * this.wingOpen; }
+    if (this.setAeroPose) {
+      const brake=state.airBrake??0,cruise=THREE.MathUtils.clamp((Math.abs(forwardSpeed)*3.6-100)/80,0,1);
+      this.wingOpen += (Math.max(state.showcase?1:cruise,brake)-this.wingOpen)*(1-Math.exp(-dt*5));
+      this.wingAngle += ((state.showcase?.35:brake)-this.wingAngle)*(1-Math.exp(-dt*7));
+      this.setAeroPose(this.wingOpen,this.wingAngle);
     }
     this.doorOpen += (Number(!!state.showcase) - this.doorOpen) * (1 - Math.exp(-dt * 4));
     for (const door of this.doors) { door.rotation.x = .95 * this.doorOpen; door.rotation.z = -door.userData.side * .35 * this.doorOpen; }

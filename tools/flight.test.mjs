@@ -122,20 +122,20 @@ test('Roadster airbrake shortens high-speed stops without changing the speed cap
   console.log('90 m/s stopping distances, baseline / Roadster airbrake:',results);
 });
 
-test('Roadster mesh has finite bounds, four wheels and six cold gas jets',()=>{
+test('Roadster mesh has finite bounds, four wheels and eight cold gas jets',()=>{
   const m=buildRoadster(0xc80012);
   assert.equal(m.doors.length,2);
   for(const door of m.doors) {
     const bounds=new THREE.Box3().setFromObject(door);
     assert.ok(door.userData.side<0?bounds.max.x<0:bounds.min.x>0,'each hinged door must contain only its own side of the body');
   }
-  for(const actuator of m.aeroStruts) assert.equal(actuator.parent,m.car,'animated actuators must not be statically merged');
-  assert.equal(m.wheels.length,4); assert.equal(m.frontPivots.length,2); assert.equal(m.rearWheelsLocal.length,2); assert.equal(m.jets.length,6);
+  for(const actuator of m.aeroStruts) assert.ok(actuator.parent && m.car.getObjectById(actuator.id)===actuator,'animated actuators must remain in the folding rig, not be statically merged');
+  assert.equal(m.wheels.length,4); assert.equal(m.frontPivots.length,2); assert.equal(m.rearWheelsLocal.length,2); assert.equal(m.jets.length,8);
   m.jets.forEach(j=>j.geometry.computeBoundingSphere());
   let triangles=0;
   m.car.traverse(o=>{if(o.isMesh){const p=o.geometry.attributes.position; assert.ok(Array.from(p.array).every(Number.isFinite));triangles+=(o.geometry.index?.count??p.count)/3;}});
-  // Includes the newly visible cabin and independent door skins.
-  assert.ok(triangles<24000, String(triangles));
+  // Includes photo-derived lamp optics, articulated wing and nozzle hardware.
+  assert.ok(triangles<32000, String(triangles));
   const size=new THREE.Box3().setFromObject(m.car).getSize(new THREE.Vector3());
   assert.ok(size.x>2 && size.x<2.5 && size.z<6);
   assert.ok(Math.abs(vehicleMaxSpeedMps('u9x')*3.6-496.22)<1e-9);
